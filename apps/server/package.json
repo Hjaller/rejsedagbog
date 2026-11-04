@@ -9,17 +9,24 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.mjs",
     "env:generate": "varlock codegen",
-    "auth:generate": "varlock run -- npx --yes auth@latest generate --config src/services.ts --output ../../packages/db/prisma/schema/auth.prisma --yes"
+    "auth:generate": "varlock run -- npx --yes auth@latest generate --config src/services.ts --output ../../packages/db/prisma/schema/auth.prisma --yes",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@aws-sdk/s3-request-presigner": "^3.1161.0",
     "@fastify/cors": "^11.3.0",
+    "@fastify/multipart": "^10.1.7",
+    "@fastify/rate-limit": "^11.2.2",
     "@hono/trpc-server": "^0.4.2",
     "@rejsedagbog/api": "*",
     "@rejsedagbog/auth": "*",
     "@rejsedagbog/db": "*",
+    "@rejsedagbog/shared": "*",
     "@trpc/server": "^11.19.0",
     "better-auth": "1.7.12",
     "fastify": "^5.12.3",
+    "sharp": "^0.35.5",
     "varlock": "1.23.0",
     "zod": "^4.5.4"
   },
@@ -28,6 +35,7 @@
     "@types/node": "^26.4.1",
     "tsdown": "^0.23.0",
     "tsx": "^4.23.13",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
   }
 }
