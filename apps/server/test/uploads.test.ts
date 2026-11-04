@@ -89,6 +89,22 @@ describe("POST /api/uploads", () => {
     expect(res.statusCode).toBe(413);
   });
 
+  it("CSRF: afviser upload fra et fremmed site, selv med gyldig cookie", async () => {
+    const mediaId = randomUUID();
+    const file = { data: await jpegWithGps(), type: "image/jpeg" };
+    const res = await upload(t.app, sara, { tripId: trip.id, mediaId }, file, "https://ond-side.example");
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("FORBIDDEN_ORIGIN");
+    expect(await t.db.media.count({ where: { id: mediaId } })).toBe(0);
+    expect(t.storage.objects.has(`trips/${trip.id}/${mediaId}.jpg`)).toBe(false);
+  });
+
+  it("mobilappen uden Origin-header kan stadig uploade", async () => {
+    const file = { data: await jpegWithGps(), type: "image/jpeg" };
+    const res = await upload(t.app, sara, { tripId: trip.id, mediaId: randomUUID() }, file, null);
+    expect(res.statusCode).toBe(201);
+  });
+
   it("afviser ugyldige felter", async () => {
     const res = await upload(t.app, sara, { tripId: "ikke-et-id", mediaId: randomUUID() });
     expect(res.statusCode).toBe(400);

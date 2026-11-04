@@ -5,7 +5,7 @@ import { createAuth } from "@rejsedagbog/auth";
 import { createPrismaClient, type Database } from "@rejsedagbog/db";
 import sharp from "sharp";
 
-import { buildApp, type App } from "../src/app";
+import { buildApp, type App, type AppDeps } from "../src/app";
 import { TEST_DATABASE_URL } from "./env";
 
 const ORIGIN = "http://localhost:3001";
@@ -36,7 +36,9 @@ export type TestContext = {
   close: () => Promise<void>;
 };
 
-export async function createTestApp(): Promise<TestContext> {
+export async function createTestApp(
+  options: Pick<AppDeps, "trustProxy" | "logger"> = {},
+): Promise<TestContext> {
   const db = createPrismaClient({ DATABASE_URL: TEST_DATABASE_URL });
   const auth = createAuth(
     {
@@ -54,6 +56,7 @@ export async function createTestApp(): Promise<TestContext> {
     restCountriesApiKey: null,
     corsOrigin: ORIGIN,
     logger: false,
+    ...options,
   });
   await app.ready();
   return {
@@ -158,9 +161,12 @@ export async function upload(
   user: TestUser | undefined,
   fields: Record<string, string>,
   file?: { data: Buffer; type: string },
+  /** Web-appens origin som standard; null svarer til mobilappen, der ikke sender Origin. */
+  origin: string | null = ORIGIN,
 ) {
   const { payload, contentType } = uploadPayload(fields, file);
-  const headers: Record<string, string> = { "content-type": contentType, origin: ORIGIN };
+  const headers: Record<string, string> = { "content-type": contentType };
+  if (origin) headers.origin = origin;
   if (user) headers.cookie = user.cookie;
   return app.inject({ method: "POST", url: "/api/uploads", headers, payload });
 }

@@ -116,8 +116,9 @@ function isWeather(v: unknown): v is Weather {
 }
 
 export async function toPostDto(post: PostRow, storage: MediaStorage | null): Promise<PostDto> {
-  // Slettede indlæg sendes kun som "tombstones", uden indhold og billeder.
-  const media = post.deletedAt
+  // Slettede indlæg sendes kun som "tombstones", uden indhold, position og billeder.
+  const deleted = !!post.deletedAt;
+  const media = deleted
     ? []
     : await Promise.all(
         post.media.map(async (m) => ({
@@ -133,13 +134,13 @@ export async function toPostDto(post: PostRow, storage: MediaStorage | null): Pr
     id: post.id,
     tripId: post.tripId,
     author: post.author,
-    text: post.deletedAt ? "" : post.text,
+    text: deleted ? "" : post.text,
     takenAt: post.takenAt.toISOString(),
-    lat: post.lat,
-    lon: post.lon,
-    placeName: post.placeName,
-    weather: isWeather(post.weather) ? post.weather : null,
-    countryCode: post.countryCode,
+    lat: deleted ? null : post.lat,
+    lon: deleted ? null : post.lon,
+    placeName: deleted ? null : post.placeName,
+    weather: !deleted && isWeather(post.weather) ? post.weather : null,
+    countryCode: deleted ? null : post.countryCode,
     media,
     createdAt: post.createdAt.toISOString(),
     updatedAt: post.updatedAt.toISOString(),

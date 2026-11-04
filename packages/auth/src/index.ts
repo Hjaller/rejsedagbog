@@ -42,7 +42,8 @@ export function createAuth(
       // Serveren sætter denne header ud fra Fastifys request.ip (se apps/server/src/routes/auth.ts).
       ipAddress: { ipAddressHeaders: ["x-rejsepost-client-ip"] },
       defaultCookieAttributes: {
-        sameSite: "none",
+        // Web og API deployes bag samme reverse proxy. Appen sender cookien selv.
+        sameSite: "lax",
         secure: true,
         httpOnly: true,
       },

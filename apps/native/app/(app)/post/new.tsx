@@ -26,7 +26,7 @@ import {
   type PickResult,
 } from "@/lib/media";
 import { radius, space, usePalette } from "@/lib/theme";
-import { trpc } from "@/utils/trpc";
+import { trpcClient } from "@/utils/trpc";
 
 type LocationState =
   | { status: "loading" }
@@ -78,7 +78,9 @@ export default function NewPostScreen() {
 
   const coords = location.status === "ok" ? location.coords : null;
   const preview = useQuery({
-    ...trpc.enrich.preview.queryOptions({ lat: coords?.lat ?? 0, lon: coords?.lon ?? 0, takenAt }),
+    // Serveren har preview som mutation, så koordinaterne ikke kommer i URL'en. Her opfører den sig som en læsning.
+    queryKey: ["enrich-preview", coords?.lat, coords?.lon, takenAt],
+    queryFn: () => trpcClient.enrich.preview.mutate({ lat: coords!.lat, lon: coords!.lon, takenAt }),
     enabled: !!coords && online,
     retry: 1,
     staleTime: 10 * 60_000,

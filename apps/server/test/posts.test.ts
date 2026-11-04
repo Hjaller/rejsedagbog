@@ -74,6 +74,33 @@ describe("indlæg i en grupperejse", () => {
     expect(tombstone?.text).toBe("");
   });
 
+  it("sletning fjerner position, sted og vejr fra både database og tombstone", async () => {
+    const postId = randomUUID();
+    await mutate(t.app, "posts.create", { id: postId, tripId: trip.id, text: "Hemmeligt sted", takenAt: "2026-05-15T10:00:00Z" }, sara);
+    const place = {
+      lat: 41.9,
+      lon: 12.5,
+      placeName: "Colosseum, Rom",
+      weather: { tempC: 21, code: 0, windKmh: 5 },
+      countryCode: "IT",
+    };
+    // Sat direkte, så testen ikke kalder Nominatim og Open-Meteo.
+    await t.db.post.update({ where: { id: postId }, data: place });
+    const since = new Date(Date.now() - 60_000).toISOString();
+
+    await mutate(t.app, "posts.delete", { tripId: trip.id, postId }, sara);
+
+    const row = await t.db.post.findUniqueOrThrow({ where: { id: postId } });
+    expect(row).toMatchObject({ text: "", lat: null, lon: null, placeName: null, weather: null, countryCode: null });
+    expect(row.deletedAt).toBeTruthy();
+
+    // Rækker slettet før rettelsen kan stadig have data: de må heller ikke sendes ud.
+    await t.db.post.update({ where: { id: postId }, data: place });
+    const changes = await query<Record<string, unknown>[]>(t.app, "posts.list", { tripId: trip.id, since }, jonas);
+    const tombstone = changes.ok ? changes.data.find((p) => p.id === postId) : undefined;
+    expect(tombstone).toMatchObject({ lat: null, lon: null, placeName: null, weather: null, countryCode: null, media: [] });
+  });
+
   it("afviser for lang tekst med en dansk fejlbesked", async () => {
     const res = await mutate(
       t.app,

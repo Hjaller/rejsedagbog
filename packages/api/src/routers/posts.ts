@@ -1,4 +1,4 @@
-import type { Prisma } from "@rejsedagbog/db";
+import { Prisma } from "@rejsedagbog/db";
 import { postCreateInput, postListInput, postRefInput, postUpdateInput } from "@rejsedagbog/shared";
 import { TRPCError } from "@trpc/server";
 
@@ -63,7 +63,7 @@ export const postsRouter = router({
 
     const takenAt = new Date(input.takenAt);
     const hasCoords = input.lat != null && input.lon != null;
-    const enrichment = hasCoords ? await enrich(input.lat!, input.lon!, takenAt) : null;
+    const enrichment = hasCoords ? await enrich(input.lat!, input.lon!, takenAt, userId) : null;
 
     const trip = await ctx.db.trip.findUniqueOrThrow({
       where: { id: input.tripId },
@@ -107,7 +107,10 @@ export const postsRouter = router({
     return toPostDto(updated, ctx.storage);
   }),
 
-  /** Soft delete + sletning af billederne i bucket'en. Kun forfatteren. */
+  /**
+   * Soft delete + sletning af billederne i bucket'en. Kun forfatteren.
+   * Rækken bliver stående som tombstone, men tekst, position, sted og vejr fjernes.
+   */
   delete: tripMemberProcedure.input(postRefInput).mutation(async ({ ctx, input }) => {
     const post = await ctx.db.post.findFirst({
       where: { id: input.postId, tripId: input.tripId },
@@ -121,7 +124,18 @@ export const postsRouter = router({
 
     await ctx.db.$transaction([
       ctx.db.media.deleteMany({ where: { postId: input.postId } }),
-      ctx.db.post.update({ where: { id: input.postId }, data: { deletedAt: new Date() } }),
+      ctx.db.post.update({
+        where: { id: input.postId },
+        data: {
+          deletedAt: new Date(),
+          text: "",
+          lat: null,
+          lon: null,
+          placeName: null,
+          weather: Prisma.DbNull,
+          countryCode: null,
+        },
+      }),
     ]);
     if (ctx.storage && post.media.length) {
       const keys = post.media.flatMap((m) => (m.thumbKey ? [m.key, m.thumbKey] : [m.key]));

@@ -43,18 +43,53 @@ class TtlCache<V> {
   }
 }
 
+/**
+ * Køen er begrænset, så én bruger ikke kan få posts.create til at hænge for alle.
+ * Appen sender ét indlæg ad gangen, så grænsen pr. bruger rammer ikke almindelig brug.
+ */
+const NOMINATIM_MAX_QUEUE = 20;
+const NOMINATIM_MAX_QUEUE_PER_USER = 3;
+/** Samlet ventetid på hver kilde inkl. kø. Derefter gemmes indlægget uden. */
+const ENRICH_DEADLINE_MS = 12_000;
+
+class NominatimBusyError extends Error {}
+
 let nominatimQueue: Promise<unknown> = Promise.resolve();
 let lastNominatimCall = 0;
+let queuedTotal = 0;
+const queuedByUser = new Map<string, number>();
 
-function throttledNominatim<T>(fn: () => Promise<T>): Promise<T> {
-  const run = nominatimQueue.then(async () => {
-    const wait = lastNominatimCall + 1_100 - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastNominatimCall = Date.now();
-    return fn();
-  });
+function throttledNominatim<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const mine = queuedByUser.get(userId) ?? 0;
+  if (queuedTotal >= NOMINATIM_MAX_QUEUE || mine >= NOMINATIM_MAX_QUEUE_PER_USER) {
+    return Promise.reject(new NominatimBusyError("Køen til stednavne er fuld"));
+  }
+  queuedTotal++;
+  queuedByUser.set(userId, mine + 1);
+
+  const run = nominatimQueue
+    .then(async () => {
+      const wait = lastNominatimCall + 1_100 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastNominatimCall = Date.now();
+      return fn();
+    })
+    .finally(() => {
+      queuedTotal--;
+      const left = (queuedByUser.get(userId) ?? 1) - 1;
+      if (left > 0) queuedByUser.set(userId, left);
+      else queuedByUser.delete(userId);
+    });
   nominatimQueue = run.catch(() => undefined);
   return run;
+}
+
+function withDeadline<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Tog for lang tid")), ENRICH_DEADLINE_MS);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -81,7 +116,7 @@ const placeCache = new TtlCache<{ placeName: string | null; countryCode: string 
   7 * 24 * 3600_000,
 );
 
-export async function reverseGeocode(lat: number, lon: number) {
+export async function reverseGeocode(lat: number, lon: number, userId: string) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   const cached = placeCache.get(key);
   if (cached) return cached;
@@ -95,7 +130,7 @@ export async function reverseGeocode(lat: number, lon: number) {
     addressdetails: "1",
   }).toString();
 
-  const data = (await throttledNominatim(() => fetchJson(url.toString()))) as NominatimResponse;
+  const data = (await throttledNominatim(userId, () => fetchJson(url.toString()))) as NominatimResponse;
   const result = { placeName: formatPlaceName(data), countryCode: countryCodeOf(data) };
   placeCache.set(key, result);
   return result;
@@ -176,13 +211,18 @@ export async function weatherAt(lat: number, lon: number, takenAt: Date): Promis
 
 // ---------------------------------------------------------------------------
 
-/** Henter sted og vejr parallelt. Fejl i én kilde giver null i stedet for at vælte kaldet. */
-export async function enrich(lat: number, lon: number, takenAt: Date): Promise<Enrichment> {
+/**
+ * Henter sted og vejr parallelt. Fejl, fuld kø eller for lang ventetid i én kilde
+ * giver null i stedet for at vælte eller blokere kaldet.
+ */
+export async function enrich(lat: number, lon: number, takenAt: Date, userId: string): Promise<Enrichment> {
   const [place, weather] = await Promise.allSettled([
-    reverseGeocode(lat, lon),
-    weatherAt(lat, lon, takenAt),
+    withDeadline(reverseGeocode(lat, lon, userId)),
+    withDeadline(weatherAt(lat, lon, takenAt)),
   ]);
-  if (place.status === "rejected") console.warn("[enrich] stednavn fejlede:", place.reason);
+  if (place.status === "rejected" && !(place.reason instanceof NominatimBusyError)) {
+    console.warn("[enrich] stednavn fejlede:", place.reason);
+  }
   if (weather.status === "rejected") console.warn("[enrich] vejr fejlede:", weather.reason);
   return {
     placeName: place.status === "fulfilled" ? place.value.placeName : null,

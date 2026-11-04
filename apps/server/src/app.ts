@@ -9,7 +9,7 @@ import type { Database } from "@rejsedagbog/db";
 import { UPLOAD_MAX_BYTES } from "@rejsedagbog/shared";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { fromNodeHeaders } from "better-auth/node";
-import Fastify, { type FastifyServerOptions } from "fastify";
+import Fastify, { type FastifyLoggerOptions, type FastifyRequest } from "fastify";
 
 import { registerAuthRoutes } from "./routes/auth";
 import { registerLocalMediaRoute } from "./routes/media";
@@ -25,11 +25,25 @@ export type AppDeps = {
   storage: MediaStorage | null;
   restCountriesApiKey: string | null;
   corsOrigin: string;
-  /** Sæt til true bag en reverse proxy, så request.ip er klientens IP. */
-  trustProxy?: boolean;
-  logger?: FastifyServerOptions["logger"];
+  /** Proxyens IP/CIDR, så request.ip er klientens IP (se trust-proxy.ts). */
+  trustProxy?: false | string;
+  /** false slår logning fra. Query-strenge logges aldrig. */
+  logger?: false | (FastifyLoggerOptions & { stream?: { write(line: string): void } });
   rateLimits?: { trpcPerMinute: number; uploadsPerMinute: number };
 };
+
+/**
+ * Query-strengen må ikke i loggen: den kan indeholde tRPC-input og
+ * signaturerne på billed-links (/api/media/...?exp&sig).
+ */
+function logRequest(req: FastifyRequest) {
+  return {
+    method: req.method,
+    url: req.url.split("?")[0],
+    host: req.host,
+    remoteAddress: req.ip,
+  };
+}
 
 /**
  * Bygger Fastify-appen uden at starte den, så integrationstests kan bruge
@@ -37,8 +51,8 @@ export type AppDeps = {
  */
 export async function buildApp(deps: AppDeps) {
   const app = Fastify({
-    logger: deps.logger ?? true,
-    trustProxy: deps.trustProxy ?? false,
+    logger: deps.logger === false ? false : { ...deps.logger, serializers: { req: logRequest } },
+    trustProxy: deps.trustProxy || false,
     bodyLimit: 1024 * 1024,
   });
   const limits = deps.rateLimits ?? { trpcPerMinute: 300, uploadsPerMinute: 60 };
@@ -87,6 +101,7 @@ export async function buildApp(deps: AppDeps) {
     storage: deps.storage,
     getSession,
     perMinute: limits.uploadsPerMinute,
+    corsOrigin: deps.corsOrigin,
   });
 
   if (deps.storage && "isLocal" in deps.storage) {

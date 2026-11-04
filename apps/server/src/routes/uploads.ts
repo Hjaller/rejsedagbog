@@ -15,6 +15,7 @@ type UploadDeps = {
   storage: MediaStorage | null;
   getSession: (headers: Record<string, string | string[] | undefined>) => Promise<Session>;
   perMinute: number;
+  corsOrigin: string;
 };
 
 const fieldsSchema = z.object({
@@ -39,6 +40,13 @@ export function registerUploadRoute(app: FastifyInstance, deps: UploadDeps) {
     "/api/uploads",
     { config: { rateLimit: { max: deps.perMinute, timeWindow: "1 minute" } } },
     async (request, reply) => {
+      // CSRF: browsere sender altid Origin ved POST på tværs af sites, appen sender ingen.
+      // Multipart udløser ingen CORS-preflight, så CORS alene stopper ikke forespørgslen.
+      const origin = request.headers.origin;
+      if (origin && origin !== deps.corsOrigin) {
+        return fail(reply, 403, "FORBIDDEN_ORIGIN", "Upload er ikke tilladt herfra");
+      }
+
       const session = await deps.getSession(request.headers);
       if (!session) return fail(reply, 401, "UNAUTHORIZED", "Du skal være logget ind");
       const userId = session.user.id;

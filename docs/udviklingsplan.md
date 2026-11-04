@@ -318,7 +318,7 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 
 **Lavet**
 - `POST /api/uploads` (`apps/server/src/routes/uploads.ts`): session og medlemskab tjekkes, filtype og størrelse valideres (indholdet tjekkes med sharp, ikke kun klientens mimetype), EXIF/GPS fjernes, og der laves en thumbnail på 480 px. Uploaden er idempotent på et `mediaId` fra appen (= indlæggets id).
-- Rate limiting: login/opret konto højst 5 pr. minut pr. IP (Better Auth; IP'en sættes af serveren ud fra `request.ip`, så klienten ikke kan forfalske den), tRPC 300 pr. minut og upload 60 pr. minut (`@fastify/rate-limit`).
+- Rate limiting: login/opret konto højst 5 pr. minut pr. IP (Better Auth; IP'en sættes af serveren ud fra `request.ip`), tRPC 300 pr. minut og upload 60 pr. minut (`@fastify/rate-limit`). Bag en proxy skal `TRUST_PROXY` sættes (se sikkerhedsrettelserne nedenfor).
 - Serveren er delt op i `app.ts` (`buildApp`, testbar) og `index.ts` (opstart).
 - Upload-kø og synkronisering i appen (`lib/sync/`): rejser oprettet offline sendes først, derefter indlæg ét ad gangen (billede → `posts.create`). Netværksfejl lægger indlægget tilbage i køen uden at tælle forsøg; serverfejl giver backoff (15 s → maks. 30 min). Andres indlæg hentes og flettes ind, slettede fjernes. Kører ved opstart, når nettet kommer tilbage, når appen kommer i forgrunden, efter "Gem indlæg", hvert minut (for backoff) og ved pull-to-refresh.
 - Billeder fra serveren caches i expo-image på indlæggets id, så de ikke hentes igen, når de signerede links skifter, og kan vises offline.
@@ -337,6 +337,14 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 - Appen er stadig ikke kørt på en enhed. Manuel flytilstands-test (afsnit 7) mangler.
 - S3-udbyder er ikke valgt (den lokale lagring dækker udvikling).
 - Uge 3: deploy, Should-features (redigér/slet i appen, invitationskoder, galleri-filter, web, kort).
+
+### 4. nov. 2026: sikkerhedsrettelser
+
+- **Klient-IP bag proxy:** `trustProxy` var `true` i produktion, så klienten kunne omgå al IP-baseret rate limiting med en falsk `X-Forwarded-For`. Nu styres det af `TRUST_PROXY`, som skal være proxyens IP/CIDR. **Skal sættes ved deploy.** Uden den deler alle brugere samme grænse, og serveren advarer ved opstart. `true` og antal hop stopper opstarten: Fastify 5.12 ignorerer antal hop, fordi det ikke kan bekræfte, at forespørgslen kommer fra proxyen.
+- **Slettede indlæg:** tekst, position, sted, vejr og land fjernes fra databasen ved sletning og sendes ikke ud i tombstones.
+- **Køen til Nominatim:** højst 20 i kø og 3 pr. bruger, og hver kilde har en samlet deadline på 12 s. Ellers gemmes indlægget uden den oplysning. Der er ingen senere genberigelse, så et indlæg gemt under pres forbliver uden stednavn.
+- **CSRF:** `POST /api/uploads` afviser forkert `Origin` (appen sender ingen), og cookien er `SameSite=Lax`. Kræver, at web og API ligger på samme site, hvilket deploy-planen lægger op til. Skal de ligge på forskellige domæner, skal det genovervejes.
+- **Logs:** query-strenge logges ikke længere, og `enrich.preview` er en mutation, så koordinater ikke står i URL'er.
 
 ### 4. nov. 2026: test på telefon (ikke afsluttet)
 

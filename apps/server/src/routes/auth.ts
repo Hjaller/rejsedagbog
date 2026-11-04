@@ -17,7 +17,8 @@ export function registerAuthRoutes(app: FastifyInstance, auth: Auth) {
         for (const [key, value] of Object.entries(request.headers)) {
           if (value && key !== CLIENT_IP_HEADER) headers.append(key, value.toString());
         }
-        // request.ip respekterer Fastifys trustProxy, så klienten ikke kan forfalske sin IP.
+        // request.ip følger Fastifys trustProxy. Den må kun stole på vores egen proxy,
+        // ellers kan klienten forfalske sin IP med X-Forwarded-For (se trust-proxy.ts).
         headers.set(CLIENT_IP_HEADER, request.ip);
 
         const response = await auth.handler(
