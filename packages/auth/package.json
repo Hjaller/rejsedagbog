@@ -1,0 +1,21 @@
+{
+  "name": "@rejsedagbog/auth",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@better-auth/expo": "1.7.12",
+    "@rejsedagbog/db": "*",
+    "better-auth": "1.7.12",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@rejsedagbog/config": "*",
+    "typescript": "^6.0.3"
+  }
+}

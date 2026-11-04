@@ -1,0 +1,22 @@
+{
+  "name": "@rejsedagbog/api",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rejsedagbog/auth": "*",
+    "@rejsedagbog/db": "*",
+    "@trpc/client": "^11.19.0",
+    "@trpc/server": "^11.19.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@rejsedagbog/config": "*",
+    "typescript": "^6.0.3"
+  }
+}

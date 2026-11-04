@@ -1,0 +1,48 @@
+{
+  "name": "rejsedagbog",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "dev:native": "turbo run dev -F native --",
+    "dev:web": "turbo run dev -F web --",
+    "dev:server": "turbo run dev -F server --",
+    "db:push": "turbo run db:push -F @rejsedagbog/db --",
+    "db:studio": "turbo run db:studio -F @rejsedagbog/db --",
+    "db:generate": "turbo run db:generate -F @rejsedagbog/db --",
+    "db:migrate": "turbo run db:migrate -F @rejsedagbog/db --",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./apps/native/ && varlock codegen --path ./packages/db/",
+    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./apps/server/ && varlock codegen --path ./apps/native/ && varlock codegen --path ./packages/db/",
+    "auth:generate": "cd apps/server && npm run auth:generate"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@rejsedagbog/config": "*",
+    "@types/node": "^26.4.1",
+    "turbo": "^2.11.7",
+    "typescript": "^6.0.3",
+    "varlock": "1.23.0"
+  },
+  "overrides": {
+    "@next/env": "npm:@varlock/nextjs-integration@1.2.2"
+  },
+  "packageManager": "npm@12.0.1",
+  "allowScripts": {
+    "esbuild": true,
+    "sharp": true,
+    "@prisma/engines": true,
+    "prisma": true
+  }
+}
