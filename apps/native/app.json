@@ -1,15 +1,21 @@
 {
   "expo": {
-    "name": "rejsedagbog",
+    "name": "Rejsepost",
     "slug": "rejsedagbog",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "rejsedagbog",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.rejsedagbog"
+      "bundleIdentifier": "com.anonymous.rejsedagbog",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "da",
+        "CFBundleLocalizations": [
+          "da"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +25,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.rejsedagbog"
+      "package": "com.anonymous.rejsedagbog",
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -37,6 +47,24 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      "expo-sqlite",
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Rejsepost bruger dine billeder, så du kan vælge et billede til et indlæg.",
+          "cameraPermission": "Rejsepost bruger kameraet, så du kan tage et billede til et indlæg.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Rejsepost bruger din position, mens appen er åben, til at tilføje sted og vejr til dine indlæg.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ]
     ],
