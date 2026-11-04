@@ -1,0 +1,18 @@
+{
+  "name": "@rejsedagbog/shared",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@rejsedagbog/config": "*",
+    "typescript": "^6.0.3"
+  }
+}
