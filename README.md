@@ -18,42 +18,79 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **Authentication** - Better-Auth
 - **Turborepo** - Optimized monorepo build system
 
-## Getting Started
+## Kom i gang på en ny computer
 
-First, install the dependencies:
+Kravspecifikationen ligger i roden, og planen og den aktuelle status står i [docs/udviklingsplan.md](docs/udviklingsplan.md) (afsnit 10 viser, hvor langt projektet er).
+
+Kræver Node.js, npm og Docker Desktop.
+
+**1. Installér afhængigheder.** Det genererer også `src/env.ts` i hver app.
 
 ```bash
 npm install
 ```
 
-## Database Setup
+**2. Opret `.env`-filerne.** De er gitignored og skal laves på hver computer.
 
-Generate the Prisma client before development, typechecking, or building, including in CI and deployment builds. Run this again after changing the Prisma schema:
+`apps/server/.env`:
+
+```
+BETTER_AUTH_SECRET=<mindst 32 tegn>
+BETTER_AUTH_URL=http://localhost:3000
+CORS_ORIGIN=http://localhost:3001
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rejsedagbog
+```
+
+En hemmelighed kan laves med `node -p "require('node:crypto').randomBytes(32).toString('hex')"`. Valgfrit: `S3_*` og `REST_COUNTRIES_API_KEY` (se `apps/server/.env.schema`). Uden S3 gemmes billeder lokalt i `apps/server/.data/media` under udvikling.
+
+`apps/native/.env` (brug computerens LAN-IP, fordi `localhost` ikke virker fra en telefon):
+
+```
+EXPO_PUBLIC_SERVER_URL=http://<din-lan-ip>:3000
+```
+
+`apps/web/.env`:
+
+```
+NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+```
+
+**3. Start databasen og opret tabellerne.**
 
 ```bash
+docker compose up -d db
 npm run db:generate
+npx turbo run db:migrate:deploy -F @rejsedagbog/db
 ```
 
-This project uses PostgreSQL with Prisma.
-
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/server/.env` file with your PostgreSQL connection details.
-
-3. Apply the schema to your database:
+**4. Start serveren og appen.**
 
 ```bash
-npm run db:push
+npm run dev:server
 ```
 
-Then, run the development server:
+Start appen i en ny terminal med en af disse to:
 
 ```bash
-npm run dev
+cd apps/native
+npx expo start --go       # Expo Go: scan QR-koden, ingen native build
+npx expo run:android      # development build: kræver Android Studio/SDK og en tilsluttet telefon
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-From `apps/native`, run the `ios` script for iOS or the `android` script for Android to build and launch the app. See [Expo development builds](https://docs.expo.dev/develop/development-builds/introduction/) for device setup.
-The API is running at [http://localhost:3000](http://localhost:3000).
+Telefonen skal være på samme netværk som computeren, og firewallen skal tillade Node.js på port 3000 og 8081.
+
+**5. Kør tests** (kræver, at databasen kører):
+
+```bash
+npm run test
+npm run check-types
+```
+
+Data følger ikke med git: den lokale database og uploadede billeder findes kun på den computer, de blev lavet på.
+
+`npm run dev` starter alle apps på én gang. Web-appen kører på [http://localhost:3001](http://localhost:3001) og API'et på [http://localhost:3000](http://localhost:3000).
+
+Efter ændringer i Prisma-skemaet: `npm run db:migrate` og `npm run db:generate`.
 
 ## UI Customization
 
@@ -116,6 +153,7 @@ rejsedagbog/
 │   └── server/      # Backend API (Fastify, TRPC)
 ├── packages/
 │   ├── ui/          # Shared shadcn/ui components and styles
+│   ├── shared/      # Zod-skemaer, konstanter, vejrkoder og landedata (bruges af app og server)
 │   ├── api/         # API layer / business logic
 │   ├── auth/        # Authentication configuration & logic
 │   └── db/          # Database schema & queries
