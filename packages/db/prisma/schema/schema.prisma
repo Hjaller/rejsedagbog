@@ -1,10 +1,102 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated"
+  provider     = "prisma-client"
+  output       = "../generated"
   moduleFormat = "esm"
-  runtime = "nodejs"
+  runtime      = "nodejs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Rejsepost-domænet. Se docs/udviklingsplan.md afsnit 2.
+// Relationerne til User er også erklæret i auth.prisma (Prisma kræver begge
+// sider). Kør du `npm run auth:generate`, skal felterne under
+// "Rejsepost-relationer" i auth.prisma genindsættes.
+// ---------------------------------------------------------------------------
+
+model Trip {
+  /// UUID genereret i appen, så en rejse oprettet offline kan synkroniseres idempotent.
+  id          String       @id @db.Uuid
+  name        String       @db.VarChar(80)
+  /// ISO 3166-1 alpha-2
+  countryCode String       @db.Char(2)
+  startDate   DateTime     @db.Date
+  endDate     DateTime     @db.Date
+  /// Should: grupperejser. Seks tegn [A-Z0-9].
+  inviteCode  String?      @unique @db.Char(6)
+  ownerId     String
+  owner       User         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     TripMember[]
+  posts       Post[]
+  media       Media[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([ownerId])
+  @@map("trip")
+}
+
+model TripMember {
+  tripId   String   @db.Uuid
+  trip     Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// owner | member
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+
+  @@id([tripId, userId])
+  @@index([userId])
+  @@map("trip_member")
+}
+
+model Post {
+  /// UUID genereret i appen → posts.create er en idempotent upsert.
+  id          String    @id @db.Uuid
+  tripId      String    @db.Uuid
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  text        String    @db.VarChar(500)
+  takenAt     DateTime
+  lat         Float?
+  lon         Float?
+  placeName   String?
+  /// { tempC, code, windKmh } – se @rejsedagbog/shared Weather
+  weather     Json?
+  countryCode String?   @db.Char(2)
+  media       Media[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Soft delete, så andre klienter opdager sletningen via posts.list({ since }).
+  deletedAt   DateTime?
+
+  @@index([tripId, updatedAt])
+  @@index([authorId])
+  @@map("post")
+}
+
+model Media {
+  id         String   @id @default(uuid()) @db.Uuid
+  /// Uploades før indlægget oprettes, derfor valgfri. Låses til rejsen ved upload.
+  postId     String?  @db.Uuid
+  post       Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tripId     String   @db.Uuid
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  uploaderId String
+  /// photo | video (Could)
+  kind       String   @default("photo")
+  key        String
+  thumbKey   String?
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now())
+
+  @@index([postId])
+  @@index([tripId])
+  @@map("media")
 }

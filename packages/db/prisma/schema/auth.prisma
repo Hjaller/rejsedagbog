@@ -9,6 +9,11 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  // Rejsepost-relationer (se schema.prisma)
+  ownedTrips  Trip[]       @relation("TripOwner")
+  tripMembers TripMember[]
+  posts       Post[]
+
   @@unique([email])
   @@map("user")
 }
