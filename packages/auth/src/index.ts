@@ -25,10 +25,22 @@ export function createAuth(
       "exp://",
       "http://localhost:8081",
     ],
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: true, minPasswordLength: 8 },
+    // Rate limiting på login (kravspec afsnit 4). Slået til i alle miljøer, så det kan testes lokalt.
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 100,
+      customRules: {
+        "/sign-in/email": { window: 60, max: 5 },
+        "/sign-up/email": { window: 60, max: 5 },
+      },
+    },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     advanced: {
+      // Serveren sætter denne header ud fra Fastifys request.ip (se apps/server/src/routes/auth.ts).
+      ipAddress: { ipAddressHeaders: ["x-rejsepost-client-ip"] },
       defaultCookieAttributes: {
         sameSite: "none",
         secure: true,
