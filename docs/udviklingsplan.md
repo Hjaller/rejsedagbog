@@ -346,8 +346,18 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 - **CSRF:** `POST /api/uploads` afviser forkert `Origin` (appen sender ingen), og cookien er `SameSite=Lax`. Kræver, at web og API ligger på samme site, hvilket deploy-planen lægger op til. Skal de ligge på forskellige domæner, skal det genovervejes.
 - **Logs:** query-strenge logges ikke længere, og `enrich.preview` er en mutation, så koordinater ikke står i URL'er.
 
-### 4. nov. 2026: test på telefon (ikke afsluttet)
+### 5. nov. 2026: første kørsel på en enhed (Android-emulator)
 
-- `npx expo run:android` er ikke lykkedes endnu: den første Gradle-build stoppede, fordi C: var fuld. Gradle-cachen er derefter flyttet med `GRADLE_USER_HOME`, men builden er ikke kørt igen.
-- Expo Go er det nemmeste alternativ: `npx expo start --go` i `apps/native`. Projektet har `expo-dev-client`, så flaget er nødvendigt. Det er ikke bekræftet på en enhed endnu.
-- Næste skridt: kør appen på en telefon og lav den manuelle flytilstands-test (afsnit 7). Opsætning på en ny computer står i `README.md`.
+Development build på en Android 36-emulator. Hele kæden virker: opret konto, opret rejse, GPS, kamera, sted og vejr fra serveren, upload af indlæg og billede.
+
+**Fejl fundet og rettet** (ingen af dem kunne fanges af testene, som kører i Node)
+- Uden login endte appen på "Siden findes ikke" og kunne ikke komme til login. `+not-found` sender nu videre til login.
+- Billed-upload fejlede på alle enheder: Expos `fetch` accepterer ikke React Natives `{ uri, name, type }` i FormData. Bruger nu `File` fra `expo-file-system`.
+- Programfejl under synkronisering blev tolket som manglende net, så indlægget stod som "venter på upload" for altid. Nu tæller kun rigtige netværksfejl som offline (med test).
+- Position: med Googles "Location Accuracy" slået fra viste Android en dialog hver gang, og der kom ingen position. Nu bruges `Accuracy.High` uden dialog.
+- Windows: C++-builden stoppede på stier over 260 tegn. Løst med config-pluginet `plugins/with-short-cmake-paths.js`.
+
+**Mangler**
+- Manuel flytilstands-test (afsnit 7), test på en fysisk telefon og på iOS.
+- Galleri, fuldskærmsviewer og visning af andres billeder er ikke afprøvet på en enhed.
+- Appens skærme har ingen automatiske tests, så fejl som de to første fanges kun ved at køre appen.
