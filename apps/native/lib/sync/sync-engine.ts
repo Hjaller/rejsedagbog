@@ -57,9 +57,19 @@ export function mediaUrlResolver(serverUrl: string) {
   return (url: string | null) => (!url ? null : url.startsWith("/") ? `${base}${url}` : url);
 }
 
+/**
+ * fetch uden svar fra serveren. Beskeden tjekkes, fordi en almindelig programfejl også kan
+ * være en TypeError, og den må ikke ligne manglende net: så ville indlægget stå som
+ * "venter på upload" for altid, uden at nogen fejl blev vist.
+ */
+export function isFetchFailure(err: unknown): boolean {
+  // React Native: "Network request failed". Expos fetch: "fetch failed: ...".
+  return err instanceof Error && /network request failed|fetch failed/i.test(err.message);
+}
+
 function isNetworkError(err: unknown): boolean {
   if (err instanceof TRPCClientError) return !err.data; // intet svar fra serveren
-  return err instanceof TypeError; // fetch: "Network request failed"
+  return isFetchFailure(err);
 }
 
 function httpStatus(err: unknown): number | undefined {

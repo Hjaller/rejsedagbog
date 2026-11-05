@@ -189,6 +189,38 @@ describe("synkronisering (upload-kø og hentning)", () => {
     expect(await t.db.media.count({ where: { id } })).toBe(1);
   });
 
+  it("en programfejl under upload vises som fejl og ligner ikke manglende net", async () => {
+    const id = await newLocalPost("Programfejl");
+    const broken: SyncDeps = {
+      ...makeDeps(baseUrl, sara),
+      uploadImage: async () => {
+        throw new TypeError("Unsupported FormDataPart implementation");
+      },
+    };
+    const result = await runSyncWith(broken, local, { pull: false, ignoreBackoff: true });
+    expect(result).toMatchObject({ offline: false, failed: 1 });
+    expect(await localPost(id)).toMatchObject({ syncStatus: "fejl", attempts: 1 });
+
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect((await localPost(id))?.syncStatus).toBe("synkroniseret");
+  });
+
+  it("fetch uden svar tælles som manglende net, ikke som et fejlet forsøg", async () => {
+    const id = await newLocalPost("Tunnel");
+    const offline: SyncDeps = {
+      ...makeDeps(baseUrl, sara),
+      uploadImage: async () => {
+        throw new TypeError("Network request failed");
+      },
+    };
+    const result = await runSyncWith(offline, local, { pull: false, ignoreBackoff: true });
+    expect(result.offline).toBe(true);
+    expect(await localPost(id)).toMatchObject({ syncStatus: "lokal", attempts: 0 });
+
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect((await localPost(id))?.syncStatus).toBe("synkroniseret");
+  });
+
   it("ugyldige indlæg markeres som fejlet uden at blokere resten af køen", async () => {
     const bad = await newLocalPost("x".repeat(501), false);
     const good = await newLocalPost("Gyldigt", false);

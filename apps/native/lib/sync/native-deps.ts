@@ -8,6 +8,7 @@ import { ENV } from "../../src/env";
 import {
   AuthError,
   errorMessage,
+  isFetchFailure,
   mediaUrlResolver,
   OfflineError,
   runSyncWith,
@@ -17,12 +18,15 @@ import {
 
 const serverUrl = ENV.EXPO_PUBLIC_SERVER_URL.replace(/\/$/, "");
 
-/** Upload med React Natives FormData, som tager { uri, name, type } for filer. */
+/**
+ * Expos fetch accepterer ikke React Natives { uri, name, type } i FormData
+ * ("Unsupported FormDataPart implementation"), kun objekter med bytes() som File.
+ */
 async function uploadImage({ tripId, mediaId, localUri }: { tripId: string; mediaId: string; localUri: string }) {
   const form = new FormData();
   form.append("tripId", tripId);
   form.append("mediaId", mediaId);
-  form.append("file", { uri: localUri, name: `${mediaId}.jpg`, type: "image/jpeg" } as unknown as Blob);
+  form.append("file", new File(localUri));
 
   const cookie = await authClient.getCookie();
   let res: Response;
@@ -34,7 +38,8 @@ async function uploadImage({ tripId, mediaId, localUri }: { tripId: string; medi
       credentials: "omit",
     });
   } catch (err) {
-    throw new OfflineError(errorMessage(err));
+    if (isFetchFailure(err)) throw new OfflineError(errorMessage(err));
+    throw err;
   }
   if (res.status === 401) throw new AuthError("Ikke logget ind");
   if (!res.ok) {
