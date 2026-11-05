@@ -103,8 +103,15 @@ export async function getCurrentCoords(): Promise<LocationResult> {
   if (!perm.granted) return { status: "denied" };
   try {
     const last = await Location.getLastKnownPositionAsync({ maxAge: 2 * 60_000, requiredAccuracy: 200 });
+    // Uden dialogen om Googles "Location Accuracy": den ville dukke op, hver gang skærmen åbnes,
+    // og et nej ville give indlægget uden position, selvom GPS'en virker.
+    // High, fordi Balanced ikke tænder GPS'en, når Location Accuracy er slået fra.
     const pos =
-      last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+      last ??
+      (await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        mayShowUserSettingsDialog: false,
+      }));
     return { status: "ok", coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } };
   } catch {
     return { status: "unavailable" };
