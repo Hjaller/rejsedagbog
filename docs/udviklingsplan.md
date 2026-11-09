@@ -372,5 +372,32 @@ Development build på en Android 36-emulator. Hele kæden virker: opret konto, o
 - Bucket `rejsedagbog` i `hel1` er oprettet. Røgtesten er bestået: upload, signeret link (200), usigneret link (403, bucket'en er privat) og sletning.
 
 **Mangler**
-- Upload fra appen mod Hetzner (indtil nu kun testet mod lokal disk).
+- ~~Upload fra appen mod Hetzner (indtil nu kun testet mod lokal disk).~~ Lavet, se nedenfor.
 - Separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler) før deploy.
+
+### 9. nov. 2026: MVP færdig (uge 2's "færdig når" er opfyldt)
+
+Afprøvet i Android-emulatoren (API 36) mod den lokale server med Hetzner-bucket'en.
+
+**Verificeret**
+- **Upload til Hetzner fra appen:** original (2048 px-grænse) og thumbnail ligger i bucket'en. Signeret link giver 200 og udløber efter 15 min, usigneret link giver 403, og billederne har ingen EXIF/GPS.
+- **Flytilstandstest (afsnit 7):** med flytilstand og uden forbindelse til serveren blev 3 indlæg oprettet ("Sted/Vejr hentes senere", stiplet ramme, "3 venter på upload"). Appen blev genstartet offline, og indlæggene var der stadig. Da nettet kom tilbage, blev de uploadet automatisk (3 uploads, 3 `posts.create`, ingen fejl), uden dubletter og med stednavn og vejr fra serveren.
+- **Galleri og fuldskærmsviewer:** 3 kolonner grupperet pr. dag, swipe mellem billederne.
+- **Andres billeder:** bruger B blev tilføjet rejsen direkte i databasen (invitationskoder er Should). B's indlæg blev hentet ved pull-to-refresh og vist i tidslinje, galleri og viewer med billede fra S3. Rejsen viser "2 i gruppen".
+
+**Fejl fundet og rettet**
+- **Alle svar med billed-URL'er gav 500 med S3:** varlocks lækagetjek fandt `S3_ACCESS_KEY_ID` i de signerede URL'er (`X-Amz-Credential`) og blokerede svaret. Nøgle-ID'et er ikke hemmeligt, så det er nu `@public` i `.env.schema`. Det er `S3_SECRET_ACCESS_KEY` stadig ikke. Fejlen var skjult, fordi udvikling og tests bruger lokal lagring.
+- **Viewer viste forkert tekst og tæller:** vieweren åbnede på det rigtige billede, men viste "1 / N" og teksten fra første indlæg, fordi indekset blev sat, før listen var hentet. Det viste billede huskes nu på id.
+- **Android-build på Windows:** reanimateds C++-build fejlede på stier over 260 tegn, fordi ninja i SDK'ens CMake 3.22.1 ikke kan lange stier. `plugins/with-short-cmake-paths.js` sætter nu CMake 3.31.6 (ninja 1.12) for alle moduler. Kræver `LongPathsEnabled` i Windows.
+
+**Opsætning af udviklingsmiljø (fundet undervejs)**
+- `apps/native/.env` skal have `EXPO_PUBLIC_SERVER_URL=http://localhost:3000`, og emulatoren skal have `adb reverse tcp:3000 tcp:3000`.
+- En tom database kræver `npm run db:migrate:deploy -w @rejsedagbog/db`.
+- Android SDK 37, build-tools 37.0.0, NDK 27.1.12297006 og CMake 3.31.6 skal være installeret i en SDK, man har skriveadgang til (her `%LOCALAPPDATA%\Android\Sdk`, sat som `ANDROID_HOME`). Gradle kan ikke installere i `Program Files (x86)`.
+
+**Position måles, når billedet tages (rettet samme dag)**
+- Før blev positionen kun hentet, når opret-skærmen åbnede, og en sidst kendt position på op til 2 minutter blev genbrugt. I et tog kunne et indlæg derfor få et sted flere km fra, hvor billedet blev taget.
+- Nu bruges positionen fra skærmens åbning kun som estimat til forhåndsvisningen. Når der trykkes "Tag billede", startes en ny måling (sidst kendt position må højst være 10 s gammel), mens kameraet er åbent, og den erstatter estimatet. Har kameraet selv skrevet GPS i billedets EXIF, bruges den. Trykkes "Gem", før målingen er klar, ventes der højst 5 s; ellers gemmes estimatet. Ændres positionen, gemmes sted og vejr fra forhåndsvisningen ikke, og serveren beriger ved upload.
+- Afprøvet i emulatoren med Androids GPS-test-provider: skærmen blev åbnet ved Vatikanet og billedet taget ved Trevi. Indlægget fik Trevis koordinater og "Piazza di Trevi, Rom". (Emulatorens `geo fix` er upålidelig til den slags tests: en position, der sendes, mens GPS'en er slukket, går tabt. Brug `adb shell cmd location providers set-test-provider-location gps --location LAT,LON`.)
+
+**Næste skridt:** uge 3, deploy og Should-features (afsnit 6).
