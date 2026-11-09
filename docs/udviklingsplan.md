@@ -9,7 +9,7 @@ Planen følger kravspecifikationens tre uger og MoSCoW-prioritering. Must-krav u
 
 | # | Kravspec siger | Ændres til | Begrundelse / konsekvens |
 |---|---|---|---|
-| 1 | Billeder i S3-kompatibel lagring **(MinIO)**, kørt i Docker Compose | **Ekstern, administreret S3-kompatibel lagring** (udbyder vælges, se 0.1) | Ingen storage-container i Compose. Backend taler S3-API via AWS SDK v3 med konfigurerbart endpoint, så udbyderen kan skiftes alene via miljøvariabler. Der bruges separate buckets til dev og prod. |
+| 1 | Billeder i S3-kompatibel lagring **(MinIO)**, kørt i Docker Compose | **Hetzner Object Storage** (ekstern, administreret S3-kompatibel lagring, se 0.1) | Ingen storage-container i Compose. Backend taler S3-API via AWS SDK v3 med konfigurerbart endpoint, så udbyderen kan skiftes alene via miljøvariabler. Der bruges separate buckets til dev og prod. |
 | 2 | Eget REST-API i Fastify med JSON-schema-validering | **tRPC på Fastify** med Zod-validering (sådan er scaffoldet sat op) + én almindelig REST-route til billedupload (multipart) | Typerne deles automatisk mellem app, web og backend, og Zod giver samme inputvalidering. tRPC håndterer ikke filupload godt, derfor er upload en separat Fastify-route. **Besluttet:** tRPC beholdes til alt andet end filer, billedupload går gennem en Fastify-route, og teksten i kravspec opdateres. |
 | 3 | Backend, database og lagring kører i Docker Compose | Compose indeholder `server`, `web` og **`db` (PostgreSQL)**. Scaffoldet mangler db-servicen, så den tilføjes. | Lagring ligger nu uden for Compose (punkt 1). |
 | 4 | – | Scaffoldets drawer- og tabs-navigation i `apps/native` erstattes af responsiv navigation (bundbar/sidebar) | Navigationen skal følge de tre layouts i afsnit 4 i kravspec. |
@@ -19,28 +19,32 @@ Planen følger kravspecifikationens tre uger og MoSCoW-prioritering. Must-krav u
 Følgende tekst i kravspecifikationen skal opdateres:
 - **Afsnit 2, API/backend:** "Eget REST-API i Fastify" → "Eget API i Fastify med tRPC (Zod-validering) og en REST-route til billedupload".
 - **Afsnit 2, Begrundelse:** "Fastify har indbygget validering af input med JSON-schema" → "tRPC deler typerne mellem app, web og backend, og Zod validerer input".
-- **Afsnit 2, Cloud-lagring:** "S3-kompatibel lagring (MinIO)" → "ekstern S3-kompatibel lagring"; kun backend og database kører i Docker Compose.
+- **Afsnit 2, Cloud-lagring:** "S3-kompatibel lagring (MinIO)" → "Hetzner Object Storage (S3-kompatibel)"; kun backend og database kører i Docker Compose.
 - **Afsnit 4, Sikkerhed:** "Hvert API-endpoint i Fastify" → "Hver tRPC-procedure og upload-routen".
 - **Afsnit 6:** uge 1 "Docker Compose med PostgreSQL og MinIO" → "Docker Compose med PostgreSQL og S3-bucket hos udbyder"; uge 2 "billedupload til MinIO" → "billedupload til S3".
 
-### 0.1 Valg af S3-udbyder (åben beslutning)
+### 0.1 S3-udbyder: Hetzner Object Storage (besluttet 9. nov. 2026)
 
-Koden skrives udbyder-neutralt. Følgende skal afklares i uge 1, dag 1:
+Koden er stadig udbyder-neutral (AWS SDK v3), så et skift kun kræver nye miljøvariabler.
 
-- **Udbyder**, fx Cloudflare R2, Hetzner Object Storage, Backblaze B2 eller AWS S3. Hos dem alle gælder: private buckets, presigned GET-URL'er og S3-API.
-- **Region/datacenter**, gerne i EU, fordi billederne er persondata.
-- **Path-style eller virtual-hosted URL'er**, som styres af `S3_FORCE_PATH_STYLE`.
+- **Placering:** en af Hetzners EU-placeringer: `fsn1` (Falkenstein), `nbg1` (Nürnberg) eller `hel1` (Helsinki). Billederne er persondata, så de bliver i EU.
+- **URL'er:** virtual-hosted (`S3_FORCE_PATH_STYLE=false`), dvs. `https://<bucket>.fsn1.your-objectstorage.com/<nøgle>`.
+- **Buckets:** private, én til dev og én til prod. Bucket-navne er unikke på tværs af alle Hetzner-kunder, så der skal måske et suffiks på.
+- **Nøgler:** S3-nøgler oprettes under *Security → S3 credentials* og gælder for alle buckets i Hetzner-projektet. Skal en lækket dev-nøgle ikke kunne røre prod-billederne, skal prod-bucket'en ligge i sit eget Hetzner-projekt med egne nøgler.
+- **Checksums:** SDK v3 sender som standard nye checksum-headere, som ikke alle S3-kompatible udbydere accepterer. Klienten er sat til `WHEN_REQUIRED` (`apps/server/src/storage.ts`).
 
-Miljøvariabler i `apps/server/.env.schema` (varlock, alle `@sensitive` undtagen bucket og region):
+Miljøvariabler i `apps/server/.env` (se `.env.schema`; nøglerne er `@sensitive`):
 
 ```
-S3_ENDPOINT=          # fx https://<account>.r2.cloudflarestorage.com
-S3_REGION=            # fx auto / eu-central-1
-S3_BUCKET=            # rejsepost-dev / rejsepost-prod
+S3_ENDPOINT=https://fsn1.your-objectstorage.com
+S3_REGION=fsn1
+S3_BUCKET=rejsepost-dev-xxxx        # rejsepost-prod-xxxx i drift
 S3_ACCESS_KEY_ID=
 S3_SECRET_ACCESS_KEY=
-S3_FORCE_PATH_STYLE=  # true/false
+S3_FORCE_PATH_STYLE=false
 ```
+
+**Røgtest:** `npm run s3:smoke -w server` lægger et objekt op, henter det via et signeret link, tjekker at et usigneret link giver 403 (bucket'en er privat) og sletter det igen.
 
 Variablerne skal også tilføjes `globalEnv` i `turbo.json`. Nøglerne ligger kun på serveren og aldrig i appen eller i Git (sikkerhedsrisiko 2 i kravspec).
 
@@ -281,7 +285,7 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 
 | Risiko | Håndtering |
 |---|---|
-| Valget af S3-udbyder forsinker uge 1 | Beslutningen tages mandag i uge 1. Koden er udbyder-neutral, så et skift kun kræver nye env-værdier. |
+| Valget af S3-udbyder forsinker uge 1 | Afgjort 9. nov.: Hetzner Object Storage. Koden er udbyder-neutral, så et skift kun kræver nye env-værdier. |
 | Der er ingen lokal storage-container, så udvikling kræver net til bucket'en | Brug en separat dev-bucket. Upload-koden testes isoleret med en mock af S3-klienten. |
 | Udbyderens S3-kompatibilitet afviger (path-style, checksums, POST-policy) | Kun basale operationer bruges (`PutObject`, `GetObject` presign, `DeleteObject`), og `S3_FORCE_PATH_STYLE` er konfigurerbar. |
 | Uploads gennem serveren belaster båndbredden | Billederne komprimeres i appen før upload (fx max 2048 px, JPEG 0.8). Det er tilstrækkeligt i denne skala. |
@@ -361,3 +365,12 @@ Development build på en Android 36-emulator. Hele kæden virker: opret konto, o
 - Manuel flytilstands-test (afsnit 7), test på en fysisk telefon og på iOS.
 - Galleri, fuldskærmsviewer og visning af andres billeder er ikke afprøvet på en enhed.
 - Appens skærme har ingen automatiske tests, så fejl som de to første fanges kun ved at køre appen.
+
+### 9. nov. 2026: S3-udbyder valgt
+
+- **Hetzner Object Storage** (afsnit 0.1). `.env.schema` har Hetzner-eksempler, og `npm run s3:smoke -w server` røgtester bucket'en.
+- Bucket `rejsedagbog` i `hel1` er oprettet. Røgtesten er bestået: upload, signeret link (200), usigneret link (403, bucket'en er privat) og sletning.
+
+**Mangler**
+- Upload fra appen mod Hetzner (indtil nu kun testet mod lokal disk).
+- Separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler) før deploy.
