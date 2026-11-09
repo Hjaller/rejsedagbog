@@ -6,7 +6,7 @@ import { Image } from "expo-image";
 import * as Linking from "expo-linking";
 import { useNetworkState } from "expo-network";
 import { useRouter } from "expo-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,6 +17,7 @@ import { formatRelative } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useActiveTrip, useCountryFacts, useCreatePost } from "@/lib/local-db/queries";
 import {
+  CAPTURE_MAX_AGE_MS,
   getCurrentCoords,
   persistPhoto,
   pickPhoto,
@@ -30,9 +31,13 @@ import { trpcClient } from "@/utils/trpc";
 
 type LocationState =
   | { status: "loading" }
-  | { status: "ok"; coords: Coords; source: "gps" | "photo" }
+  // gps: estimat fra da skærmen blev åbnet · capture: målt da billedet blev taget · photo: billedets EXIF
+  | { status: "ok"; coords: Coords; source: "gps" | "capture" | "photo" }
   | { status: "denied" }
   | { status: "unavailable" };
+
+/** Så længe venter "Gem indlæg" højst på positionen fra da billedet blev taget. */
+const CAPTURE_WAIT_MS = 5_000;
 
 /**
  * Opret indlæg (wireframe 3). Maks. tre tryk: "+" → "Tag billede" → "Gem indlæg".
@@ -55,16 +60,22 @@ export default function NewPostScreen() {
   const [takenAt, setTakenAt] = useState(() => new Date().toISOString());
   const [location, setLocation] = useState<LocationState>({ status: "loading" });
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Målingen af positionen for det seneste billede. Hvert nyt billede får et nyt nummer, så en
+  // langsom måling for et tidligere billede ikke overskriver positionen for det nyeste.
+  const capture = useRef<{ seq: number; pending: Promise<Coords | null> | null }>({ seq: 0, pending: null });
+  const [locating, setLocating] = useState(false);
 
   const trip = trips.find((t) => t.id === tripId) ?? activeTrip;
 
   // GPS ("mens appen bruges") hentes, når skærmen åbnes – dvs. når funktionen bruges.
+  // Det er kun et estimat til forhåndsvisningen; positionen for billedet måles, når det tages.
   useEffect(() => {
     let cancelled = false;
     getCurrentCoords().then((r) => {
       if (cancelled) return;
       setLocation((prev) =>
-        prev.status === "ok" && prev.source === "photo"
+        prev.status === "ok" && prev.source !== "gps"
           ? prev
           : r.status === "ok"
             ? { status: "ok", coords: r.coords, source: "gps" }
@@ -88,23 +99,65 @@ export default function NewPostScreen() {
   const countryCode = preview.data?.countryCode ?? trip?.countryCode ?? null;
   const facts = useCountryFacts(countryCode);
 
-  const handlePick = (result: PickResult) => {
+  /** Returnerer billedets nummer (se `capture`), eller null hvis intet billede blev valgt. */
+  const handlePick = (result: PickResult): number | null => {
     setError(null);
     if (result.status === "denied") {
       setError("Appen har ikke adgang til kameraet. Giv adgang i telefonens indstillinger.");
-      return;
+      return null;
     }
-    if (result.status !== "ok") return;
+    if (result.status !== "ok") return null;
+    const seq = ++capture.current.seq;
+    capture.current.pending = null;
+    setLocating(false);
     setPhoto(result.photo);
-    // Billeder fra galleriet: brug billedets eget tidspunkt og position, hvis de findes.
+    // Brug billedets eget tidspunkt og position (EXIF), hvis de findes.
     setTakenAt(result.photo.takenAt ?? new Date().toISOString());
     if (result.photo.coords) setLocation({ status: "ok", coords: result.photo.coords, source: "photo" });
+    return seq;
+  };
+
+  /**
+   * Positionen skal være der, hvor billedet blev taget – ikke hvor skærmen blev åbnet, og
+   * ikke en position fra for 2 min siden (i et tog er det flere km). GPS'en startes, mens
+   * kameraet er åbent, så målingen som regel er klar, når billedet er taget.
+   */
+  const onTakePhoto = async () => {
+    const fix = getCurrentCoords({ maxAgeMs: CAPTURE_MAX_AGE_MS });
+    const result = await takePhoto();
+    const seq = handlePick(result);
+    // EXIF-position fra kameraet er den præcise position for billedet.
+    if (seq === null || (result.status === "ok" && result.photo.coords)) return;
+
+    setLocating(true);
+    const pending = fix.then((r) => {
+      if (capture.current.seq !== seq) return null; // et nyere billede er valgt
+      // Mislykkes målingen, beholdes estimatet fra da skærmen blev åbnet.
+      if (r.status === "ok") setLocation({ status: "ok", coords: r.coords, source: "capture" });
+      return r.status === "ok" ? r.coords : null;
+    });
+    capture.current.pending = pending;
+    await pending;
+    if (capture.current.seq === seq) {
+      capture.current.pending = null;
+      setLocating(false);
+    }
   };
 
   const save = async () => {
     if (!photo || !trip) return;
     setError(null);
+    setSaving(true);
     try {
+      // Trykkes der "Gem", før positionen for billedet er målt, ventes der kort på den.
+      const pending = capture.current.pending;
+      const measured = pending
+        ? await Promise.race([pending, new Promise<null>((resolve) => setTimeout(() => resolve(null), CAPTURE_WAIT_MS))])
+        : null;
+      const finalCoords = measured ?? coords;
+      // Sted og vejr i forhåndsvisningen hører til de gamle koordinater; serveren beriger ved upload.
+      const previewMatches = !measured || (measured.lat === coords?.lat && measured.lon === coords?.lon);
+
       const id = Crypto.randomUUID();
       const localImageUri = persistPhoto(photo.uri, id);
       await createPost.mutateAsync({
@@ -114,11 +167,11 @@ export default function NewPostScreen() {
         authorName: user.name,
         text: text.trim(),
         takenAt,
-        lat: coords?.lat ?? null,
-        lon: coords?.lon ?? null,
-        placeName: preview.data?.placeName ?? null,
-        weather: preview.data?.weather ?? null,
-        countryCode,
+        lat: finalCoords?.lat ?? null,
+        lon: finalCoords?.lon ?? null,
+        placeName: previewMatches ? (preview.data?.placeName ?? null) : null,
+        weather: previewMatches ? (preview.data?.weather ?? null) : null,
+        countryCode: previewMatches ? countryCode : (trip.countryCode ?? null),
         localImageUri,
       });
       if (trip.id !== activeTrip?.id) await setActiveTrip(trip.id);
@@ -126,6 +179,8 @@ export default function NewPostScreen() {
     } catch (e) {
       console.error("[post/new] kunne ikke gemme", e);
       setError("Indlægget kunne ikke gemmes på telefonen. Prøv igen.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -139,7 +194,9 @@ export default function NewPostScreen() {
     );
   }
 
-  const placeValue = !coords
+  const placeValue = locating
+    ? "Finder position …"
+    : !coords
     ? location.status === "loading"
       ? "Finder position …"
       : location.status === "denied"
@@ -150,7 +207,9 @@ export default function NewPostScreen() {
       : preview.isLoading
         ? "Henter …"
         : (preview.data?.placeName ?? "Ukendt sted");
-  const weatherValue = !coords
+  const weatherValue = locating
+    ? "Henter …"
+    : !coords
     ? "–"
     : !online
       ? "Hentes ved upload"
@@ -192,7 +251,7 @@ export default function NewPostScreen() {
             <View>
               <Image source={{ uri: photo.uri }} style={{ width: "100%", aspectRatio: 4 / 3 }} contentFit="cover" />
               <View style={{ flexDirection: "row", gap: space.sm, padding: space.sm, justifyContent: "flex-end" }}>
-                <Button label="Tag nyt" icon="camera-outline" variant="secondary" onPress={() => takePhoto().then(handlePick)} />
+                <Button label="Tag nyt" icon="camera-outline" variant="secondary" onPress={onTakePhoto} />
                 <Button label="Vælg andet" icon="images-outline" variant="secondary" onPress={() => pickPhoto().then(handlePick)} />
               </View>
             </View>
@@ -200,7 +259,7 @@ export default function NewPostScreen() {
             <View style={{ aspectRatio: 4 / 3, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.lg }}>
               <Ionicons name="camera-outline" size={36} color={p.textMuted} />
               <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap", justifyContent: "center" }}>
-                <Button label="Tag billede" icon="camera" onPress={() => takePhoto().then(handlePick)} />
+                <Button label="Tag billede" icon="camera" onPress={onTakePhoto} />
                 <Button label="Vælg fra galleri" variant="secondary" onPress={() => pickPhoto().then(handlePick)} />
               </View>
             </View>
@@ -304,7 +363,7 @@ export default function NewPostScreen() {
           size="lg"
           onPress={save}
           disabled={!photo}
-          loading={createPost.isPending}
+          loading={saving}
           accessibilityHint={photo ? undefined : "Tag eller vælg et billede først"}
           style={{ maxWidth: 640, width: "100%", alignSelf: "center" }}
         />

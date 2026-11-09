@@ -97,12 +97,20 @@ export function persistPhoto(sourceUri: string, postId: string): string {
 
 export type LocationResult = { status: "ok"; coords: Coords } | { status: "denied" } | { status: "unavailable" };
 
-/** Kun "mens appen bruges"-tilladelse, og først når opret-skærmen åbnes. */
-export async function getCurrentCoords(): Promise<LocationResult> {
+/** Estimat, når opret-skærmen åbnes: hurtigt, men kan være op til 2 min gammelt. */
+export const SCREEN_OPEN_MAX_AGE_MS = 2 * 60_000;
+/** Når et billede tages: positionen skal være der, hvor billedet blev taget (fx i et tog). */
+export const CAPTURE_MAX_AGE_MS = 10_000;
+
+/**
+ * Kun "mens appen bruges"-tilladelse, og først når opret-skærmen åbnes.
+ * `maxAgeMs` er, hvor gammel en tidligere position må være, før der måles en ny.
+ */
+export async function getCurrentCoords({ maxAgeMs = SCREEN_OPEN_MAX_AGE_MS } = {}): Promise<LocationResult> {
   const perm = await Location.requestForegroundPermissionsAsync();
   if (!perm.granted) return { status: "denied" };
   try {
-    const last = await Location.getLastKnownPositionAsync({ maxAge: 2 * 60_000, requiredAccuracy: 200 });
+    const last = await Location.getLastKnownPositionAsync({ maxAge: maxAgeMs, requiredAccuracy: 200 });
     // Uden dialogen om Googles "Location Accuracy": den ville dukke op, hver gang skærmen åbnes,
     // og et nej ville give indlægget uden position, selvom GPS'en virker.
     // High, fordi Balanced ikke tænder GPS'en, når Location Accuracy er slået fra.
