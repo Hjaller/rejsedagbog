@@ -33,15 +33,18 @@ export default function ViewerScreen() {
     () => (posts.data ?? []).filter((p) => postImageSource(p)).sort((a, b) => a.takenAt.localeCompare(b.takenAt)),
     [posts.data],
   );
-  const initialIndex = Math.max(0, photos.findIndex((p) => p.id === postId));
-  const [index, setIndex] = useState(initialIndex);
+  // Det viste billede huskes på id, ikke indeks: ved første render er listen endnu ikke
+  // hentet (indeks 0), og en synkronisering under visningen kan flytte billederne.
+  const [currentId, setCurrentId] = useState(postId);
+  const index = Math.max(0, photos.findIndex((p) => p.id === currentId));
   const current = photos[index];
 
-  // Bevar det viste billede, når skærmen roteres (bredden ændrer sig).
+  // Bevar det viste billede, når skærmen roteres (bredden ændrer sig), eller når en
+  // synkronisering tilføjer/fjerner billeder før det viste (indekset flytter sig).
   useEffect(() => {
     if (photos.length) listRef.current?.scrollToIndex({ index, animated: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width]);
+  }, [width, index]);
 
   if (start.isLoading || posts.isLoading) {
     return (
@@ -61,9 +64,12 @@ export default function ViewerScreen() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        initialScrollIndex={initialIndex}
+        initialScrollIndex={index}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-        onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+        onMomentumScrollEnd={(e) => {
+          const shown = photos[Math.round(e.nativeEvent.contentOffset.x / width)];
+          if (shown) setCurrentId(shown.id);
+        }}
         windowSize={3}
         initialNumToRender={1}
         maxToRenderPerBatch={2}
