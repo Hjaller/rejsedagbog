@@ -116,7 +116,21 @@ export const postsRouter = router({
       where: { id: input.postId, tripId: input.tripId },
       select: { authorId: true, deletedAt: true, media: { select: { id: true, key: true, thumbKey: true } } },
     });
-    if (!post) throw notFound();
+    if (!post) {
+      // Appen kan slette et indlæg, hvis billede blev uploadet, men som aldrig blev oprettet
+      // (billedets id = indlæggets id). Det billede skal ikke blive liggende i bucket'en.
+      const orphan = await ctx.db.media.findFirst({
+        where: { id: input.postId, tripId: input.tripId, uploaderId: ctx.session.user.id, postId: null },
+        select: { id: true, key: true, thumbKey: true },
+      });
+      if (orphan) {
+        await ctx.db.media.delete({ where: { id: orphan.id } });
+        await ctx.storage?.delete(orphan.thumbKey ? [orphan.key, orphan.thumbKey] : [orphan.key]).catch((err) => {
+          console.error("[posts.delete] kunne ikke slette objekter i bucket:", err);
+        });
+      }
+      throw notFound();
+    }
     if (post.authorId !== ctx.session.user.id) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Du kan kun slette dine egne indlæg" });
     }

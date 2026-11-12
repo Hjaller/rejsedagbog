@@ -68,6 +68,12 @@ export const MIGRATIONS: string[] = [
     value TEXT
   );
   `,
+  // v2: redigering og sletning af egne indlæg (Should). En ændring gemmes lokalt
+  // med det samme og sendes til serveren af upload-køen: 'update' | 'delete' | NULL.
+  `
+  ALTER TABLE posts ADD COLUMN pendingOp TEXT;
+  CREATE INDEX posts_pending_op ON posts (pendingOp) WHERE pendingOp IS NOT NULL;
+  `,
 ];
 
 export function migrate(db: MigratableDb) {

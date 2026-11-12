@@ -42,7 +42,16 @@ export default function TripsScreen() {
           <Text style={{ color: p.textMuted, fontSize: 12, letterSpacing: 1.2 }}>REJSEPOST</Text>
           <Text style={{ color: p.text, fontSize: 24, fontWeight: "700" }}>Rejser</Text>
         </View>
-        <Button label="Ny rejse" icon="add" onPress={() => router.push("/trip/new")} />
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          <Button
+            label="Tilslut"
+            icon="enter-outline"
+            variant="secondary"
+            onPress={() => router.push("/trip/join")}
+            accessibilityHint="Tilslut en grupperejse med en invitationskode"
+          />
+          <Button label="Ny rejse" icon="add" onPress={() => router.push("/trip/new")} />
+        </View>
       </View>
 
       {isLoading ? (
@@ -51,7 +60,7 @@ export default function TripsScreen() {
         <EmptyState
           icon="airplane-outline"
           title="Ingen rejser endnu"
-          message="Opret en rejse med navn, land og datoer. Det virker også uden internet."
+          message="Opret en rejse med navn, land og datoer. Det virker også uden internet. Har du fået en invitationskode, så tryk på Tilslut."
         />
       ) : (
         <FlatList
@@ -93,6 +102,24 @@ export default function TripsScreen() {
                     {item.syncStatus !== "synkroniseret" ? " · kun på telefonen" : ""}
                   </Text>
                 </View>
+                {item.role === "owner" ? (
+                  <Pressable
+                    onPress={() => router.push({ pathname: "/trip/invite/[id]", params: { id: item.id } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Invitér til ${item.name}`}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: pressed ? p.surfaceMuted : "transparent",
+                    })}
+                  >
+                    <Ionicons name="person-add-outline" size={22} color={p.text} />
+                  </Pressable>
+                ) : null}
                 {isActive ? <Ionicons name="checkmark-circle" size={24} color={p.ink} /> : null}
               </Pressable>
             );

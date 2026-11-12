@@ -9,7 +9,15 @@ import type { AppRouter } from "@rejsedagbog/api/routers/index";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { insertPost, insertTrip, listPosts, type LocalPost } from "../../native/lib/local-db/repo";
+import {
+  countPending,
+  insertPost,
+  insertTrip,
+  listPosts,
+  markPostDeleted,
+  updatePostText,
+  type LocalPost,
+} from "../../native/lib/local-db/repo";
 import type { LocalDb } from "../../native/lib/local-db/types";
 import {
   AuthError,
@@ -259,5 +267,150 @@ describe("synkronisering (upload-kø og hentning)", () => {
     const expired = makeDeps(baseUrl, { ...sara, cookie: "better-auth.session_token=ugyldig" });
     await expect(runSyncWith(expired, local, { pull: false, ignoreBackoff: true })).rejects.toBeInstanceOf(AuthError);
     expect((await localPost(id))?.syncStatus).toBe("lokal");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Redigér og slet egne indlæg (Should)
+  // ---------------------------------------------------------------------------
+
+  /** Hele rækken, også når indlægget er markeret som slettet (listPosts skjuler dem). */
+  const rawPost = (id: string) =>
+    local.getFirstAsync<{ text: string; pendingOp: string | null; deletedAt: string | null }>(
+      "SELECT text, pendingOp, deletedAt FROM posts WHERE id = ?",
+      id,
+    );
+
+  const objectKeysFor = (id: string) => [...t.storage.objects.keys()].filter((k) => k.includes(id));
+
+  /** Kopi af deps, hvor ét tRPC-kald under posts fejler med en serverfejl. */
+  function failingPosts(deps: SyncDeps, method: "create" | "update"): SyncDeps {
+    return {
+      ...deps,
+      api: new Proxy(deps.api, {
+        get(target, prop) {
+          if (prop !== "posts") return Reflect.get(target, prop);
+          return new Proxy(target.posts, {
+            get(posts, name) {
+              if (name !== method) return Reflect.get(posts, name);
+              return {
+                mutate: async () => {
+                  throw new Error("Serveren svarede 500");
+                },
+              };
+            },
+          });
+        },
+      }),
+    };
+  }
+
+  it("en rettelse offline gemmes lokalt og sendes, når nettet kommer", async () => {
+    const id = await newLocalPost("Original", false);
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect((await localPost(id))?.syncStatus).toBe("synkroniseret");
+    const pendingBefore = await countPending(local, tripId);
+
+    await updatePostText(local, id, "Rettet i flytilstand");
+    expect(await localPost(id)).toMatchObject({ text: "Rettet i flytilstand", pendingOp: "update" });
+    expect(await countPending(local, tripId)).toBe(pendingBefore + 1);
+
+    const offline = await runSyncWith(makeDeps(DEAD_URL, sara), local, { pull: true, ignoreBackoff: true });
+    expect(offline.offline).toBe(true);
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).text).toBe("Original");
+
+    const online = await runSyncWith(makeDeps(baseUrl, sara), local, { pull: true, ignoreBackoff: true });
+    expect(online.changesPushed).toBe(1);
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).text).toBe("Rettet i flytilstand");
+    expect(await localPost(id)).toMatchObject({ text: "Rettet i flytilstand", pendingOp: null });
+    expect(await countPending(local, tripId)).toBe(pendingBefore);
+  });
+
+  it("en rettelse, der fejler på serveren, overskrives ikke af hentningen og prøves igen", async () => {
+    const id = await newLocalPost("Før", false);
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    await updatePostText(local, id, "Efter");
+
+    const result = await runSyncWith(failingPosts(makeDeps(baseUrl, sara), "update"), local, {
+      pull: true,
+      ignoreBackoff: true,
+    });
+    expect(result.failed).toBe(1);
+    // Hentningen bragte serverens "Før" med, men den lokale rettelse vinder.
+    expect(await localPost(id)).toMatchObject({ text: "Efter", pendingOp: "update" });
+
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: true, ignoreBackoff: true });
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).text).toBe("Efter");
+  });
+
+  it("en rettelse af et indlæg, der ikke er uploadet endnu, kommer med op", async () => {
+    const id = await newLocalPost("Kladde", false);
+    await updatePostText(local, id, "Færdig tekst");
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).text).toBe("Færdig tekst");
+    expect((await localPost(id))?.pendingOp).toBeNull();
+  });
+
+  it("sletning offline: væk med det samme, og slettet på serveren med billede, når nettet kommer", async () => {
+    const id = await newLocalPost("Slet mig");
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect(objectKeysFor(id)).toHaveLength(2); // original + thumbnail
+    const file = (await localPost(id))!.localImageUri!;
+
+    await markPostDeleted(local, id);
+    expect(await localPost(id)).toBeUndefined(); // skjult i appen med det samme
+
+    await runSyncWith(makeDeps(DEAD_URL, sara), local, { pull: true, ignoreBackoff: true });
+    expect(await rawPost(id)).toMatchObject({ pendingOp: "delete" });
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).deletedAt).toBeNull();
+
+    const deleted: string[] = [];
+    const deps = { ...makeDeps(baseUrl, sara), deleteFile: (uri: string) => void deleted.push(uri) };
+    const online = await runSyncWith(deps, local, { pull: true, ignoreBackoff: true });
+    expect(online.changesPushed).toBe(1);
+
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).deletedAt).not.toBeNull();
+    expect(await t.db.media.count({ where: { id } })).toBe(0);
+    expect(objectKeysFor(id)).toHaveLength(0);
+    expect(await rawPost(id)).toBeNull();
+    expect(deleted).toEqual([file]); // den lokale billedfil ryddes også op
+  });
+
+  it("et indlæg, der slettes før upload, sendes aldrig til serveren", async () => {
+    const id = await newLocalPost("Fortrudt");
+    await markPostDeleted(local, id);
+    const counters = { uploads: 0 };
+    const result = await runSyncWith(makeDeps(baseUrl, sara, counters), local, { pull: true, ignoreBackoff: true });
+    expect(result.failed).toBe(0);
+    expect(counters.uploads).toBe(0);
+    expect(await t.db.post.count({ where: { id } })).toBe(0);
+    expect(await rawPost(id)).toBeNull();
+  });
+
+  it("billede uploadet, men indlægget aldrig oprettet: sletning fjerner billedet fra bucket'en", async () => {
+    const id = await newLocalPost("Halvvejs");
+    await runSyncWith(failingPosts(makeDeps(baseUrl, sara), "create"), local, { pull: false, ignoreBackoff: true });
+    expect(await t.db.media.findUnique({ where: { id } })).toMatchObject({ postId: null });
+    expect(objectKeysFor(id)).toHaveLength(2);
+
+    await markPostDeleted(local, id);
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+    expect(await t.db.media.count({ where: { id } })).toBe(0);
+    expect(objectKeysFor(id)).toHaveLength(0);
+    expect(await t.db.post.count({ where: { id } })).toBe(0);
+    expect(await rawPost(id)).toBeNull();
+  });
+
+  it("en andens indlæg kan ikke slettes: serveren afviser, og indlægget kommer tilbage", async () => {
+    const jonasApi = makeDeps(baseUrl, jonas).api;
+    const jonasPostId = randomUUID();
+    await jonasApi.posts.create.mutate({ id: jonasPostId, tripId, text: "Jonas' billede", takenAt: new Date().toISOString() });
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: true, ignoreBackoff: true });
+
+    // Appen viser ikke "Slet" på andres indlæg; her tester vi, at serveren og køen alligevel holder.
+    await markPostDeleted(local, jonasPostId);
+    const result = await runSyncWith(makeDeps(baseUrl, sara), local, { pull: true, ignoreBackoff: true });
+    expect(result.failed).toBe(1);
+    expect(await localPost(jonasPostId)).toMatchObject({ text: "Jonas' billede", pendingOp: null });
+    expect((await t.db.post.findUniqueOrThrow({ where: { id: jonasPostId } })).deletedAt).toBeNull();
   });
 });

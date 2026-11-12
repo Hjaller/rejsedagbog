@@ -108,6 +108,62 @@ export async function markPostFailed(db: LocalDb, postId: string, attempts: numb
 }
 
 // ---------------------------------------------------------------------------
+// Rettelser og sletninger af egne indlæg
+// ---------------------------------------------------------------------------
+
+export type PendingChange = Pick<LocalPost, "id" | "tripId" | "text" | "localImageUri"> & {
+  pendingOp: "update" | "delete";
+};
+
+/**
+ * Ændringer, der skal sendes. En rettelse venter, til indlægget selv er oprettet på
+ * serveren; en sletning sendes altid (er indlægget der ikke, svarer serveren NOT_FOUND).
+ */
+export function listPendingChanges(db: LocalDb): Promise<PendingChange[]> {
+  return db.getAllAsync<PendingChange>(
+    `SELECT id, tripId, text, localImageUri, pendingOp FROM posts
+      WHERE pendingOp = 'delete' OR (pendingOp = 'update' AND syncStatus = 'synkroniseret')
+      ORDER BY updatedAt`,
+  );
+}
+
+/**
+ * Rettelsen er gemt på serveren. Er teksten ændret igen imens, bliver den stående
+ * som ventende, så den nye tekst sendes ved næste kørsel.
+ */
+export async function finishPendingUpdate(db: LocalDb, postId: string, sentText: string, dto: PostDto) {
+  await db.runAsync(
+    "UPDATE posts SET pendingOp = NULL, updatedAt = ? WHERE id = ? AND pendingOp = 'update' AND text = ?",
+    dto.updatedAt,
+    postId,
+    sentText,
+  );
+}
+
+/** Sletningen er gennemført på serveren: rækken fjernes. Returnerer billedfilen, der kan slettes. */
+export async function finishPendingDelete(db: LocalDb, postId: string): Promise<string | null> {
+  const row = await db.getFirstAsync<{ localImageUri: string | null }>(
+    "SELECT localImageUri FROM posts WHERE id = ? AND pendingOp = 'delete'",
+    postId,
+  );
+  if (!row) return null;
+  await db.runAsync("DELETE FROM posts WHERE id = ? AND pendingOp = 'delete'", postId);
+  return row.localImageUri;
+}
+
+/**
+ * Serveren afviste ændringen (fx ikke forfatteren). Den droppes, så den ikke prøves
+ * for evigt: en rettelse overskrives ved næste hentning, og et slettet indlæg kommer tilbage.
+ */
+export async function discardPendingChange(db: LocalDb, change: PendingChange) {
+  if (change.pendingOp === "delete") {
+    await db.runAsync("UPDATE posts SET deletedAt = NULL, pendingOp = NULL WHERE id = ?", change.id);
+  } else {
+    await db.runAsync("UPDATE posts SET pendingOp = NULL WHERE id = ? AND pendingOp = 'update'", change.id);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Indlæg fra serveren
 // ---------------------------------------------------------------------------
 
@@ -137,8 +193,8 @@ export async function markPostSynced(db: LocalDb, dto: PostDto, resolveUrl: (u: 
 }
 
 /**
- * Fletter rejsens indlæg fra serveren ind i SQLite. Egne indlæg, der endnu ikke er
- * uploadet, røres ikke. Returnerer filstier på lokale billeder, der kan slettes.
+ * Fletter rejsens indlæg fra serveren ind i SQLite. Egne indlæg med ændringer, der
+ * endnu ikke er sendt, røres ikke. Returnerer filstier på lokale billeder, der kan slettes.
  */
 export async function mergeServerPosts(
   db: LocalDb,
@@ -148,17 +204,21 @@ export async function mergeServerPosts(
 ): Promise<{ changed: number; orphanedFiles: string[] }> {
   let changed = 0;
   const orphanedFiles: string[] = [];
-  const local = await db.getAllAsync<{ id: string; syncStatus: string; updatedAt: string; localImageUri: string | null }>(
-    "SELECT id, syncStatus, updatedAt, localImageUri FROM posts WHERE tripId = ?",
-    tripId,
-  );
+  const local = await db.getAllAsync<{
+    id: string;
+    syncStatus: string;
+    pendingOp: string | null;
+    updatedAt: string;
+    localImageUri: string | null;
+  }>("SELECT id, syncStatus, pendingOp, updatedAt, localImageUri FROM posts WHERE tripId = ?", tripId);
   const localById = new Map(local.map((p) => [p.id, p]));
   const serverIds = new Set(posts.map((p) => p.id));
 
   await db.withExclusiveTransactionAsync(async (tx) => {
     for (const dto of posts) {
       const existing = localById.get(dto.id);
-      if (existing && existing.syncStatus !== "synkroniseret") continue;
+      // Egne indlæg, der ikke er uploadet, eller som har en rettelse/sletning på vej, røres ikke.
+      if (existing && (existing.syncStatus !== "synkroniseret" || existing.pendingOp)) continue;
       const { url, thumbUrl } = mediaUrls(dto.media, resolveUrl);
       if (!existing) changed++;
       else if (existing.updatedAt !== dto.updatedAt) changed++;

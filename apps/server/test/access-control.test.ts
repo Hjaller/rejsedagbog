@@ -67,6 +67,8 @@ describe("adgangskontrol mellem to brugere", () => {
     ["trips.delete", "mutation", { tripId: trip.id }],
     ["posts.update", "mutation", { tripId: trip.id, postId, text: "Hacket" }],
     ["posts.delete", "mutation", { tripId: trip.id, postId }],
+    ["invites.createCode", "mutation", { tripId: trip.id }],
+    ["invites.revokeCode", "mutation", { tripId: trip.id }],
     [
       "posts.create",
       "mutation",

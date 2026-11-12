@@ -107,6 +107,7 @@ export default function TimelineScreen() {
             post={selected}
             currentUserId={user.id}
             onImagePress={() => router.push(`/viewer/${selected.id}`)}
+            onDeleted={() => setSelectedId(null)}
           />
         </ScrollView>
       </View>

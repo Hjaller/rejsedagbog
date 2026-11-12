@@ -3,6 +3,7 @@ import { countryName, formatCountryFacts, formatWeather, weatherLabel } from "@r
 import { Image } from "expo-image";
 import { Pressable, Text, View } from "react-native";
 
+import { PostActions } from "@/components/post-actions";
 import { SyncIcon, syncLabel } from "@/components/sync-status";
 import { formatDateTimeLong, formatRelative } from "@/lib/dates";
 import { postImageSource, type LocalPost } from "@/lib/local-db/repo";
@@ -220,11 +221,14 @@ export function PostDetail({
   post,
   currentUserId,
   onImagePress,
+  onDeleted,
 }: {
   post: LocalPost;
   currentUserId: string;
   /** Åbner billedet i fuld skærm. */
   onImagePress?: () => void;
+  /** Kaldes, når brugeren har slettet indlægget (fx for at gå tilbage). */
+  onDeleted?: () => void;
 }) {
   const p = usePalette();
   const facts = useCountryFacts(post.countryCode);
@@ -266,6 +270,9 @@ export function PostDetail({
           </Text>
           <SyncIcon status={post.syncStatus} />
           <Text style={{ color: p.textMuted, fontSize: 14 }}>{syncLabel(post.syncStatus)}</Text>
+          {post.pendingOp === "update" ? (
+            <Text style={{ color: p.text, fontSize: 14, fontWeight: "600" }}>· rettelse venter på upload</Text>
+          ) : null}
         </View>
       </View>
       {post.text ? (
@@ -281,6 +288,7 @@ export function PostDetail({
           value={country || countryName(post.countryCode)}
         />
       </View>
+      {post.authorId === currentUserId ? <PostActions post={post} onDeleted={onDeleted} /> : null}
     </View>
   );
 }

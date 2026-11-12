@@ -80,6 +80,8 @@ export const inviteCode = z
   .toUpperCase()
   .regex(INVITE_CODE_PATTERN, "Koden består af 6 bogstaver og tal");
 
+export const inviteJoinInput = z.object({ code: inviteCode });
+
 export const enrichPreviewInput = z.object({
   lat: latitude,
   lon: longitude,

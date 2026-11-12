@@ -5,6 +5,10 @@ import { TRPCClientError, type TRPCClient } from "@trpc/client";
 import type { LocalDb } from "../local-db/types";
 import {
   deleteTripsMissingOnServer,
+  discardPendingChange,
+  finishPendingDelete,
+  finishPendingUpdate,
+  listPendingChanges,
   listSyncedTripIds,
   listUnsyncedTrips,
   listUploadQueue,
@@ -22,7 +26,8 @@ import {
  * Upload-køen (udviklingsplan afsnit 3):
  *  1. rejser oprettet offline sendes til serveren (idempotent upsert på UUID)
  *  2. indlæg uploades ét ad gangen: billede → posts.create → status "synkroniseret"
- *  3. rejser og andres indlæg hentes og flettes ind i SQLite
+ *  3. rettelser og sletninger af egne indlæg sendes (posts.update / posts.delete)
+ *  4. rejser og andres indlæg hentes og flettes ind i SQLite
  * Netværksfejl stopper kørslen uden at tælle forsøg; serverfejl giver backoff.
  *
  * Filen har ingen React Native-afhængigheder; de gives ind som SyncDeps
@@ -36,7 +41,14 @@ export type SyncOptions = {
   ignoreBackoff: boolean;
 };
 
-export type SyncResult = { uploaded: number; failed: number; pulledChanges: number; offline: boolean };
+export type SyncResult = {
+  uploaded: number;
+  /** Rettelser og sletninger, der er sendt. */
+  changesPushed: number;
+  failed: number;
+  pulledChanges: number;
+  offline: boolean;
+};
 
 export type SyncDeps = {
   api: TRPCClient<AppRouter>;
@@ -74,6 +86,11 @@ function isNetworkError(err: unknown): boolean {
 
 function httpStatus(err: unknown): number | undefined {
   if (err instanceof TRPCClientError) return (err.data as { httpStatus?: number } | undefined)?.httpStatus;
+  return undefined;
+}
+
+function trpcCode(err: unknown): string | undefined {
+  if (err instanceof TRPCClientError) return (err.data as { code?: string } | undefined)?.code;
   return undefined;
 }
 
@@ -155,6 +172,52 @@ async function pushPosts(deps: SyncDeps, db: LocalDb, opts: SyncOptions) {
   return { uploaded, failed };
 }
 
+function deleteLocalFile(deps: SyncDeps, uri: string | null) {
+  if (!uri) return;
+  try {
+    if (deps.fileExists(uri)) deps.deleteFile(uri);
+  } catch {
+    // Ikke kritisk.
+  }
+}
+
+async function pushChanges(deps: SyncDeps, db: LocalDb) {
+  let pushed = 0;
+  let failed = 0;
+  for (const change of await listPendingChanges(db)) {
+    try {
+      if (change.pendingOp === "delete") {
+        try {
+          await call(() => deps.api.posts.delete.mutate({ tripId: change.tripId, postId: change.id }));
+        } catch (err) {
+          // Findes ikke på serveren (aldrig uploadet eller allerede slettet): målet er nået.
+          if (trpcCode(err) !== "NOT_FOUND") throw err;
+        }
+        deleteLocalFile(deps, await finishPendingDelete(db, change.id));
+      } else {
+        const dto = await call(() =>
+          deps.api.posts.update.mutate({ tripId: change.tripId, postId: change.id, text: change.text }),
+        );
+        await finishPendingUpdate(db, change.id, change.text, dto);
+      }
+      pushed++;
+    } catch (err) {
+      if (err instanceof OfflineError || err instanceof AuthError) throw err;
+      const code = trpcCode(err);
+      if (code === "FORBIDDEN" || code === "NOT_FOUND" || code === "BAD_REQUEST") {
+        // Serveren siger nej, og et nyt forsøg vil give det samme svar.
+        console.warn(`[sync] ændring af ${change.id} afvist (${code}):`, errorMessage(err));
+        await discardPendingChange(db, change);
+      } else {
+        // Serverfejl: prøves igen ved næste kørsel.
+        console.warn(`[sync] ændring af ${change.id} fejlede:`, errorMessage(err));
+      }
+      failed++;
+    }
+  }
+  return { pushed, failed };
+}
+
 async function pull(deps: SyncDeps, db: LocalDb) {
   const trips = await call(() => deps.api.trips.list.query());
   for (const t of trips) await upsertTripFromServer(db, t);
@@ -174,22 +237,18 @@ async function pull(deps: SyncDeps, db: LocalDb) {
 }
 
 export async function runSyncWith(deps: SyncDeps, db: LocalDb, opts: SyncOptions): Promise<SyncResult> {
-  const result: SyncResult = { uploaded: 0, failed: 0, pulledChanges: 0, offline: false };
+  const result: SyncResult = { uploaded: 0, changesPushed: 0, failed: 0, pulledChanges: 0, offline: false };
   try {
     await pushTrips(deps, db);
     const pushed = await pushPosts(deps, db, opts);
+    const changes = await pushChanges(deps, db);
     result.uploaded = pushed.uploaded;
-    result.failed = pushed.failed;
+    result.changesPushed = changes.pushed;
+    result.failed = pushed.failed + changes.failed;
     if (opts.pull) {
       const pulled = await pull(deps, db);
       result.pulledChanges = pulled.changes;
-      for (const uri of pulled.orphanedFiles) {
-        try {
-          if (deps.fileExists(uri)) deps.deleteFile(uri);
-        } catch {
-          // Ikke kritisk.
-        }
-      }
+      for (const uri of pulled.orphanedFiles) deleteLocalFile(deps, uri);
     }
   } catch (err) {
     if (err instanceof OfflineError) {

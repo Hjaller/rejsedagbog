@@ -77,6 +77,11 @@ export function formatDayHeading(date: Date): string {
   return `${wd[0]!.toUpperCase()}${wd.slice(1)} ${date.getDate()}. ${MONTHS[date.getMonth()]}`;
 }
 
+/** "12. maj" – filterknapper i galleriet */
+export function formatDayShort(date: Date): string {
+  return `${date.getDate()}. ${MONTHS[date.getMonth()]}`;
+}
+
 /** Datofelt i formularer: "12.05.2026" ↔ "2026-05-12" */
 export function formatDateInput(iso: string): string {
   const [y, m, d] = iso.split("-");

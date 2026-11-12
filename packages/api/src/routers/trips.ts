@@ -1,20 +1,8 @@
 import { tripCreateInput, tripUpdateInput } from "@rejsedagbog/shared";
 import { TRPCError } from "@trpc/server";
 
-import { toTripDto } from "../dto";
+import { toTripDto, tripSelect } from "../dto";
 import { protectedProcedure, router, tripMemberProcedure, tripOwnerProcedure } from "../index";
-
-const tripSelect = {
-  id: true,
-  name: true,
-  countryCode: true,
-  startDate: true,
-  endDate: true,
-  inviteCode: true,
-  ownerId: true,
-  updatedAt: true,
-  _count: { select: { members: true } },
-} as const;
 
 const asDate = (isoDate: string) => new Date(`${isoDate}T00:00:00.000Z`);
 

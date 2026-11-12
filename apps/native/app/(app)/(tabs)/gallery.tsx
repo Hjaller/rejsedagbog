@@ -5,27 +5,53 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "
 
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
-import { PostDetail } from "@/components/post-views";
+import { authorLabel, PostDetail } from "@/components/post-views";
 import { TripHeader } from "@/components/trip-header";
 import { galleryColumns, useBreakpoint } from "@/lib/breakpoints";
-import { formatDayHeading } from "@/lib/dates";
+import { formatDayHeading, formatDayShort, toIsoDate } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useActiveTrip, usePendingCount, usePosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
 import { postImageSource, postImageUri, type LocalPost } from "@/lib/local-db/repo";
-import { space, usePalette } from "@/lib/theme";
+import { radius, space, usePalette } from "@/lib/theme";
 
 type Row = { type: "day"; key: string; title: string } | { type: "row"; key: string; posts: LocalPost[] };
 
 const GAP = 3;
 
+/** Den lokale dag, billedet er taget, som "YYYY-MM-DD". */
+const dayKey = (post: LocalPost) => toIsoDate(new Date(post.takenAt));
+
+type FilterOption = { key: string; label: string };
+
+/**
+ * Dage og personer, der kan filtreres på (Should: filter på dag/person). Kun
+ * billeder tælles med, og dagene står i samme rækkefølge som i galleriet.
+ */
+function filterOptions(photos: LocalPost[], currentUserId: string) {
+  const days = new Map<string, FilterOption>();
+  const authors = new Map<string, FilterOption>();
+  for (const post of photos) {
+    const day = dayKey(post);
+    if (!days.has(day)) days.set(day, { key: day, label: formatDayShort(new Date(post.takenAt)) });
+    if (!authors.has(post.authorId)) {
+      authors.set(post.authorId, { key: post.authorId, label: authorLabel(post, currentUserId) });
+    }
+  }
+  return {
+    days: [...days.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    // "Dig" først, derefter de andre i alfabetisk rækkefølge.
+    authors: [...authors.values()].sort((a, b) =>
+      a.key === currentUserId ? -1 : b.key === currentUserId ? 1 : a.label.localeCompare(b.label, "da"),
+    ),
+  };
+}
+
 /** Grupperer billeder pr. dag (wireframe 4) og deler dem op i rækker til et virtualiseret gitter. */
 function buildRows(posts: LocalPost[], columns: number): Row[] {
   const byDay = new Map<string, LocalPost[]>();
   for (const post of posts) {
-    if (!postImageUri(post, "thumb")) continue;
-    const d = new Date(post.takenAt);
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const key = dayKey(post);
     const list = byDay.get(key) ?? [];
     list.push(post);
     byDay.set(key, list);
@@ -52,11 +78,28 @@ export default function GalleryScreen() {
   const pending = usePendingCount(trip?.id);
   const [width, setWidth] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
   const refresh = useRefreshSync();
 
+  const photos = useMemo(() => (posts.data ?? []).filter((post) => !!postImageUri(post, "thumb")), [posts.data]);
+  const options = useMemo(() => filterOptions(photos, user.id), [photos, user.id]);
+  // Et valg, der ikke længere findes (andet rejse, slettet billede), tæller som "alle".
+  const day = options.days.some((d) => d.key === dayFilter) ? dayFilter : null;
+  const author = options.authors.some((a) => a.key === authorFilter) ? authorFilter : null;
+  const filtered = useMemo(
+    () => photos.filter((post) => (!day || dayKey(post) === day) && (!author || post.authorId === author)),
+    [photos, day, author],
+  );
+
   const columns = galleryColumns(bp, width);
-  const rows = useMemo(() => buildRows(posts.data ?? [], columns), [posts.data, columns]);
-  const photoCount = rows.reduce((n, r) => n + (r.type === "row" ? r.posts.length : 0), 0);
+  const rows = useMemo(() => buildRows(filtered, columns), [filtered, columns]);
+  const photoCount = filtered.length;
+  const isFiltered = !!day || !!author;
+  const resetFilters = () => {
+    setDayFilter(null);
+    setAuthorFilter(null);
+  };
   const cell = width > 0 ? (width - space.lg * 2 - GAP * (columns - 1)) / columns : 0;
 
   const header = (
@@ -72,6 +115,24 @@ export default function GalleryScreen() {
     />
   );
 
+  const filters =
+    options.authors.length > 1 || options.days.length > 1 ? (
+      <View style={{ gap: space.sm, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: p.border }}>
+        {options.authors.length > 1 ? (
+          <FilterRow
+            label="Person"
+            allLabel="Alle"
+            options={options.authors}
+            value={author}
+            onChange={setAuthorFilter}
+          />
+        ) : null}
+        {options.days.length > 1 ? (
+          <FilterRow label="Dag" allLabel="Alle dage" options={options.days} value={day} onChange={setDayFilter} />
+        ) : null}
+      </View>
+    ) : null;
+
   const open = (post: LocalPost) => {
     if (bp === "expanded") setSelectedId(post.id);
     else router.push(`/viewer/${post.id}`);
@@ -84,6 +145,12 @@ export default function GalleryScreen() {
     body = (
       <EmptyState icon="images-outline" title="Ingen rejse valgt">
         <Button label="Ny rejse" icon="add" onPress={() => router.push("/trip/new")} />
+      </EmptyState>
+    );
+  } else if (rows.length === 0 && isFiltered) {
+    body = (
+      <EmptyState icon="funnel-outline" title="Ingen billeder" message="Ingen billeder passer til filteret.">
+        <Button label="Vis alle billeder" variant="secondary" onPress={resetFilters} />
       </EmptyState>
     );
   } else if (rows.length === 0) {
@@ -122,6 +189,7 @@ export default function GalleryScreen() {
     <View style={{ flex: 1, flexDirection: "row" }}>
       <View style={{ flex: 1 }}>
         {header}
+        {filters}
         <View style={{ flex: 1 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           {width > 0 ? body : null}
         </View>
@@ -134,6 +202,7 @@ export default function GalleryScreen() {
                 post={selected}
                 currentUserId={user.id}
                 onImagePress={() => router.push(`/viewer/${selected.id}`)}
+                onDeleted={() => setSelectedId(null)}
               />
             </ScrollView>
           ) : (
@@ -142,6 +211,58 @@ export default function GalleryScreen() {
         </View>
       ) : null}
     </View>
+  );
+}
+
+function FilterRow({
+  label,
+  allLabel,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  options: FilterOption[];
+  value: string | null;
+  onChange: (key: string | null) => void;
+}) {
+  const p = usePalette();
+  const chips: { key: string | null; label: string }[] = [{ key: null, label: allLabel }, ...options];
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm, alignItems: "center" }}
+      accessibilityLabel={`Filtrér på ${label.toLowerCase()}`}
+    >
+      <Text style={{ color: p.textMuted, fontSize: 12, letterSpacing: 0.8, width: 56 }}>{label.toUpperCase()}</Text>
+      {chips.map((chip) => {
+        const selected = chip.key === value;
+        return (
+          <Pressable
+            key={chip.key ?? "alle"}
+            onPress={() => onChange(chip.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            hitSlop={{ top: 4, bottom: 4 }}
+            style={({ pressed }) => ({
+              minHeight: 36,
+              paddingHorizontal: space.md,
+              justifyContent: "center",
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: selected ? p.ink : p.borderStrong,
+              backgroundColor: selected ? p.ink : pressed ? p.surfaceMuted : p.surface,
+            })}
+          >
+            <Text style={{ color: selected ? p.onInk : p.text, fontSize: 14, fontWeight: selected ? "600" : "400" }}>
+              {chip.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 

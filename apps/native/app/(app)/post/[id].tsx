@@ -35,6 +35,7 @@ export default function PostDetailScreen() {
           post={post.data}
           currentUserId={user.id}
           onImagePress={() => router.push(`/viewer/${post.data!.id}`)}
+          onDeleted={() => router.back()}
         />
       </ScrollView>
     </>

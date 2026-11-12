@@ -46,6 +46,19 @@ export type PostDto = {
   deletedAt: string | null;
 };
 
+/** Felterne, toTripDto skal bruge. */
+export const tripSelect = {
+  id: true,
+  name: true,
+  countryCode: true,
+  startDate: true,
+  endDate: true,
+  inviteCode: true,
+  ownerId: true,
+  updatedAt: true,
+  _count: { select: { members: true } },
+} as const;
+
 const toDateOnly = (d: Date) => d.toISOString().slice(0, 10);
 
 export function toTripDto(

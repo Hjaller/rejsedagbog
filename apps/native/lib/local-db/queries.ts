@@ -16,8 +16,11 @@ import {
   insertTrip,
   listPosts,
   listTrips,
+  markPostDeleted,
   replaceCountryFacts,
   setMeta,
+  setTripInviteCode,
+  updatePostText,
   type LocalTrip,
   type NewLocalPost,
 } from "./repo";
@@ -163,6 +166,44 @@ export function useCreatePost() {
       void requestSync();
     },
   });
+}
+
+/** Retter teksten på et eget indlæg. Gemmes lokalt og sendes af upload-køen (virker offline). */
+export function useUpdatePostText() {
+  const { db } = useLocalDb();
+  const invalidate = useInvalidateLocal();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ postId, text }: { postId: string; text: string }) => updatePostText(db, postId, text),
+    onSuccess: () => {
+      void invalidate();
+      void requestSync();
+    },
+  });
+}
+
+/** Sletter et eget indlæg lokalt med det samme; upload-køen sletter det på serveren. */
+export function useDeletePost() {
+  const { db } = useLocalDb();
+  const invalidate = useInvalidateLocal();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: (postId: string) => markPostDeleted(db, postId),
+    onSuccess: () => {
+      void invalidate();
+      void requestSync();
+    },
+  });
+}
+
+/** Gemmer invitationskoden lokalt, efter serveren har lavet eller fjernet den. */
+export function useSetTripInviteCode() {
+  const { db } = useLocalDb();
+  const invalidate = useInvalidateLocal();
+  return async (tripId: string, code: string | null) => {
+    await setTripInviteCode(db, tripId, code);
+    await invalidate();
+  };
 }
 
 /** Henter landefakta fra serveren og cacher dem i SQLite (højst én gang om ugen). */

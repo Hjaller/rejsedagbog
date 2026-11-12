@@ -46,7 +46,10 @@ export default function AppLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="post/new" options={{ presentation: "modal", title: "Nyt indlæg" }} />
         <Stack.Screen name="post/[id]" options={{ title: "" }} />
+        <Stack.Screen name="post/edit/[id]" options={{ presentation: "modal", title: "Redigér indlæg" }} />
         <Stack.Screen name="trip/new" options={{ presentation: "modal", title: "Ny rejse" }} />
+        <Stack.Screen name="trip/join" options={{ presentation: "modal", title: "Tilslut rejse" }} />
+        <Stack.Screen name="trip/invite/[id]" options={{ presentation: "modal", title: "Invitér" }} />
         <Stack.Screen
           name="viewer/[postId]"
           options={{ presentation: "fullScreenModal", headerShown: false, animation: "fade" }}

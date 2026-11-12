@@ -41,9 +41,13 @@ export type LocalPost = {
   syncStatus: SyncStatus;
   lastError: string | null;
   attempts: number;
+  /** Lokal ændring, der endnu ikke er sendt til serveren. */
+  pendingOp: PendingOp | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export type PendingOp = "update" | "delete";
 
 type PostRow = Omit<LocalPost, "weather"> & { weatherJson: string | null };
 
@@ -93,6 +97,11 @@ export function listTrips(db: LocalDb): Promise<LocalTrip[]> {
 
 export function getTrip(db: LocalDb, id: string): Promise<LocalTrip | null> {
   return db.getFirstAsync<LocalTrip>("SELECT * FROM trips WHERE id = ?", id);
+}
+
+/** Gemmer den kode, serveren har lavet eller fjernet (kun ejeren ser den). */
+export async function setTripInviteCode(db: LocalDb, tripId: string, code: string | null): Promise<void> {
+  await db.runAsync("UPDATE trips SET inviteCode = ? WHERE id = ?", code, tripId);
 }
 
 export async function insertTrip(
@@ -173,16 +182,40 @@ export async function insertPost(db: LocalDb, post: NewLocalPost): Promise<void>
   );
 }
 
-/** Antal indlæg, der endnu ikke er synkroniseret (til "N venter på upload"). */
+/**
+ * Retter teksten på et af brugerens egne indlæg. Gemmes lokalt med det samme, også
+ * offline; upload-køen sender rettelsen (posts.update), når indlægget er på serveren.
+ */
+export async function updatePostText(db: LocalDb, postId: string, text: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE posts SET text = ?, updatedAt = ?, pendingOp = 'update'
+      WHERE id = ? AND deletedAt IS NULL`,
+    text,
+    new Date().toISOString(),
+    postId,
+  );
+}
+
+/**
+ * Sletter et af brugerens egne indlæg. Det forsvinder fra skærmene med det samme;
+ * rækken bliver liggende, indtil upload-køen har slettet det på serveren (posts.delete)
+ * – også hvis det aldrig nåede derop, for et svar kan være gået tabt undervejs.
+ */
+export async function markPostDeleted(db: LocalDb, postId: string): Promise<void> {
+  await db.runAsync(
+    "UPDATE posts SET deletedAt = ?, pendingOp = 'delete' WHERE id = ? AND deletedAt IS NULL",
+    new Date().toISOString(),
+    postId,
+  );
+}
+
+/** Antal indlæg (og rettelser), der endnu ikke er på serveren (til "N venter på upload"). */
 export async function countPending(db: LocalDb, tripId?: string): Promise<number> {
+  const where =
+    "deletedAt IS NULL AND (syncStatus != 'synkroniseret' OR pendingOp IS NOT NULL)";
   const row = tripId
-    ? await db.getFirstAsync<{ n: number }>(
-        "SELECT COUNT(*) AS n FROM posts WHERE syncStatus != 'synkroniseret' AND deletedAt IS NULL AND tripId = ?",
-        tripId,
-      )
-    : await db.getFirstAsync<{ n: number }>(
-        "SELECT COUNT(*) AS n FROM posts WHERE syncStatus != 'synkroniseret' AND deletedAt IS NULL",
-      );
+    ? await db.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM posts WHERE ${where} AND tripId = ?`, tripId)
+    : await db.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM posts WHERE ${where}`);
   return row?.n ?? 0;
 }
 
