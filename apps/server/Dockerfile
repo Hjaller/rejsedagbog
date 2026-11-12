@@ -15,4 +15,6 @@ COPY --from=builder /app /app
 EXPOSE 3000
 
 WORKDIR /app/apps/server
-CMD ["node", "dist/index.mjs"]
+# Migrationer køres ved hver opstart (idempotent), så en ny version aldrig starter mod et
+# gammelt skema. Fejler de, starter serveren ikke, og den gamle container bliver kørende.
+CMD ["sh", "-c", "cd /app/packages/db && npx --no-install prisma migrate deploy && cd /app/apps/server && exec node dist/index.mjs"]
