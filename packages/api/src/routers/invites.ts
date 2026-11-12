@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 
 import { toTripDto, tripSelect } from "../dto";
 import { protectedProcedure, router, tripOwnerProcedure } from "../index";
-import { createAttemptLimiter } from "../services/attempt-limiter";
+import { createAttemptLimiter, ipRateLimitKey } from "../services/attempt-limiter";
 
 /** Uden 0/O og 1/I, så koden kan læses højt og skrives af uden fejl. Passer stadig til ^[A-Z0-9]{6}$. */
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -62,19 +62,25 @@ export const invitesRouter = router({
   /** Tilslutter brugeren rejsen med koden. Idempotent: er man allerede medlem, returneres rejsen bare. */
   join: protectedProcedure.input(inviteJoinInput).mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
-    const ip = ctx.clientIp ?? "ukendt";
-    if (joinFailuresByIp.isLimited(ip) || !joinLimiter.tryAttempt(userId)) {
-      throw new TRPCError({
-        code: "TOO_MANY_REQUESTS",
-        message: "For mange forsøg. Vent 10 minutter, og prøv igen.",
-      });
+    const ipKey = ipRateLimitKey(ctx.clientIp ?? "ukendt");
+    const tooMany = () =>
+      new TRPCError({ code: "TOO_MANY_REQUESTS", message: "For mange forsøg. Vent 10 minutter, og prøv igen." });
+
+    // Begge pladser reserveres synkront før databaseopslaget, så samtidige forsøg
+    // ikke alle kan nå forbi tjekket, før den første fejl er talt.
+    const now = Date.now();
+    if (!joinLimiter.tryAttempt(userId, now)) throw tooMany();
+    if (!joinFailuresByIp.tryAttempt(ipKey, now)) {
+      joinLimiter.refund(userId, now);
+      throw tooMany();
     }
 
     const trip = await ctx.db.trip.findUnique({ where: { inviteCode: input.code }, select: { id: true } });
     if (!trip) {
-      joinFailuresByIp.record(ip);
       throw new TRPCError({ code: "NOT_FOUND", message: "Koden passer ikke til nogen rejse" });
     }
+    // Kun forkerte koder tæller pr. IP, så mange på samme wifi kan tilslutte sig.
+    joinFailuresByIp.refund(ipKey, now);
 
     const existing = await ctx.db.tripMember.findUnique({
       where: { tripId_userId: { tripId: trip.id, userId } },

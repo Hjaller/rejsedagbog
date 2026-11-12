@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { ipRateLimitKey } from "@rejsedagbog/api/services/attempt-limiter";
 import { INVITE_CODE_PATTERN } from "@rejsedagbog/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -207,5 +208,23 @@ describe("invitationskoder: grænse pr. IP", () => {
     // Samme konto fra en anden IP kommer ind.
     const other = await joinFrom(users[2]!, created.data.code, "10.0.0.8");
     expect(other).toMatchObject({ status: 200, code: undefined });
+  });
+
+  it("samtidige forkerte koder kan ikke snige sig forbi grænsen", async () => {
+    const extra = [];
+    for (const name of ["Dina", "Emil", "Frida"]) extra.push(await signUp(t.app, name, "10.0.0.98"));
+    // 30 forsøg på én gang fra samme IP, fordelt på tre konti (10 hver = under grænsen pr. bruger).
+    const results = await Promise.all(
+      extra.flatMap((user) => Array.from({ length: 10 }, () => joinFrom(user, "QQQQQQ", "10.0.0.20"))),
+    );
+    expect(results.filter((r) => r.code === "NOT_FOUND")).toHaveLength(20);
+    expect(results.filter((r) => r.code === "TOO_MANY_REQUESTS")).toHaveLength(10);
+  });
+
+  it("IPv6 tælles pr. /64, så man ikke kan skifte adresse i sit eget net", () => {
+    expect(ipRateLimitKey("2001:db8:abcd:12:1:2:3:4")).toBe(ipRateLimitKey("2001:db8:abcd:12::99"));
+    expect(ipRateLimitKey("2001:db8:abcd:12::1")).not.toBe(ipRateLimitKey("2001:db8:abcd:13::1"));
+    expect(ipRateLimitKey("::ffff:10.0.0.7")).toBe("10.0.0.7");
+    expect(ipRateLimitKey("203.0.113.5")).toBe("203.0.113.5");
   });
 });
