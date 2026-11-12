@@ -18,6 +18,8 @@ RUN mkdir -p apps/web/public
 FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Coolifys healthcheck kalder curl/wget inde i containeren; slim-imaget har ingen af dem.
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static

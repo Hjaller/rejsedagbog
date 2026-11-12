@@ -14,6 +14,9 @@ RUN --mount=type=secret,id=web_env,target=/app/apps/web/.env.local --mount=type=
 FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Coolifys healthcheck kalder curl/wget inde i containeren; slim-imaget har ingen af dem.
+# openssl bruger Prismas migrate-motor ved opstart.
+RUN apt-get update && apt-get install -y --no-install-recommends curl openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app /app
 
 EXPOSE 3000
