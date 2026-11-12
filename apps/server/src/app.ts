@@ -118,6 +118,7 @@ export async function buildApp(deps: AppDeps) {
           session: await getSession(req.headers),
           storage: deps.storage,
           restCountriesApiKey: deps.restCountriesApiKey,
+          clientIp: req.ip || null,
         };
       },
       onError({ path, error }) {

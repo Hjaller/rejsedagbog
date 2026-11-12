@@ -159,3 +159,53 @@ describe("invitationskoder", () => {
     if (!res.ok) expect(res.code).toBe("UNAUTHORIZED");
   });
 });
+
+/**
+ * Konti er billige (5 pr. minut pr. IP), så grænsen pr. bruger alene kan omgås ved at
+ * oprette mange konti. Forkerte koder tælles derfor også pr. IP.
+ */
+describe("invitationskoder: grænse pr. IP", () => {
+  let t: TestContext;
+  let owner: TestUser;
+  let users: TestUser[];
+  const trip = newTripInput("IP-grænse");
+
+  const joinFrom = async (user: TestUser, code: string, remoteAddress: string) => {
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/trpc/invites.join",
+      remoteAddress,
+      headers: { origin: "http://localhost:3001", "content-type": "application/json", cookie: user.cookie },
+      payload: JSON.stringify({ code }),
+    });
+    return { status: res.statusCode, code: res.json().error?.data?.code as string | undefined };
+  };
+
+  beforeAll(async () => {
+    t = await createTestApp();
+    const ip = "10.0.0.99";
+    owner = await signUp(t.app, "Owner", ip);
+    users = [await signUp(t.app, "Anna", ip), await signUp(t.app, "Bo", ip), await signUp(t.app, "Carl", ip)];
+    expect((await mutate(t.app, "trips.create", trip, owner)).ok).toBe(true);
+  });
+
+  afterAll(() => t.close());
+
+  it("20 forkerte koder fra samme IP spærrer IP'en, også for nye konti med en rigtig kode", async () => {
+    const created = await mutate<{ code: string }>(t.app, "invites.createCode", { tripId: trip.id }, owner);
+    if (!created.ok) throw new Error("Ingen kode");
+    const wrong = created.data.code === "QQQQQQ" ? "WWWWWW" : "QQQQQQ";
+
+    // To konti med 10 forsøg hver: hver for sig under grænsen pr. bruger.
+    for (const user of users.slice(0, 2)) {
+      for (let i = 0; i < 10; i++) expect((await joinFrom(user, wrong, "10.0.0.7")).code).toBe("NOT_FOUND");
+    }
+
+    const blocked = await joinFrom(users[2]!, created.data.code, "10.0.0.7");
+    expect(blocked).toMatchObject({ status: 429, code: "TOO_MANY_REQUESTS" });
+
+    // Samme konto fra en anden IP kommer ind.
+    const other = await joinFrom(users[2]!, created.data.code, "10.0.0.8");
+    expect(other).toMatchObject({ status: 200, code: undefined });
+  });
+});

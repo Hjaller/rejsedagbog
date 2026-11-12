@@ -18,10 +18,16 @@ function generateCode(): string {
 }
 
 /**
- * 10 forsøg pr. bruger pr. 10 minutter. Med 32^6 ≈ 1 mia. mulige koder er gætteri
- * dermed udsigtsløst, og oprettelse af nye konti er selv begrænset (5 pr. minut pr. IP).
+ * To grænser, fordi én konto er billig: oprettelse er kun begrænset til 5 pr. minut
+ * pr. IP, så én IP kan lave ~7.000 konti i døgnet. Alene ville grænsen pr. bruger
+ * give ~10 mio. gæt i døgnet mod 32^6 ≈ 1 mia. koder.
+ *  - pr. bruger: 10 forsøg pr. 10 minutter (alle forsøg)
+ *  - pr. IP: 20 forkerte koder pr. 10 minutter (kun fejl, så mange på samme wifi
+ *    kan tilslutte sig samme rejse). Højst ~2.900 gæt i døgnet pr. IP.
+ * Bag en proxy kræver IP-grænsen, at TRUST_PROXY er sat (ellers deler alle én IP).
  */
 export const joinLimiter = createAttemptLimiter({ max: 10, windowMs: 10 * 60_000 });
+export const joinFailuresByIp = createAttemptLimiter({ max: 20, windowMs: 10 * 60_000 });
 
 const isUniqueViolation = (err: unknown) =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -56,7 +62,8 @@ export const invitesRouter = router({
   /** Tilslutter brugeren rejsen med koden. Idempotent: er man allerede medlem, returneres rejsen bare. */
   join: protectedProcedure.input(inviteJoinInput).mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
-    if (!joinLimiter.tryAttempt(userId)) {
+    const ip = ctx.clientIp ?? "ukendt";
+    if (joinFailuresByIp.isLimited(ip) || !joinLimiter.tryAttempt(userId)) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",
         message: "For mange forsøg. Vent 10 minutter, og prøv igen.",
@@ -65,6 +72,7 @@ export const invitesRouter = router({
 
     const trip = await ctx.db.trip.findUnique({ where: { inviteCode: input.code }, select: { id: true } });
     if (!trip) {
+      joinFailuresByIp.record(ip);
       throw new TRPCError({ code: "NOT_FOUND", message: "Koden passer ikke til nogen rejse" });
     }
 

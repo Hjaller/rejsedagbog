@@ -10,4 +10,6 @@ export type Context = {
   storage: MediaStorage | null;
   /** Nøgle til REST Countries v5; null giver tomme landefakta. */
   restCountriesApiKey: string | null;
+  /** Klientens IP (Fastifys request.ip; bag en proxy kun korrekt med TRUST_PROXY). Til rate limiting. */
+  clientIp: string | null;
 };

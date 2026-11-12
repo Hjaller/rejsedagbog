@@ -72,10 +72,12 @@ export async function createTestApp(
 
 export type TestUser = { id: string; name: string; cookie: string };
 
-export async function signUp(app: App, name: string): Promise<TestUser> {
+/** `remoteAddress` giver en anden klient-IP, så oprettelser ikke rammer grænsen på 5 pr. minut. */
+export async function signUp(app: App, name: string, remoteAddress?: string): Promise<TestUser> {
   const res = await app.inject({
     method: "POST",
     url: "/api/auth/sign-up/email",
+    remoteAddress,
     headers: { origin: ORIGIN, "content-type": "application/json" },
     payload: { name, email: `${name.toLowerCase()}-${randomUUID()}@test.dk`, password: "hemmelig123" },
   });

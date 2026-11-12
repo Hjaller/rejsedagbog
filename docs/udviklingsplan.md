@@ -169,7 +169,7 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 | `trips` | `list`, `get`, `create`, `update`, `delete` | `protectedProcedure`; `get/update/delete` via `tripMemberProcedure` (`update/delete` kun ejer) |
 | `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `tripMemberProcedure`; `update/delete` kun forfatteren |
 | `enrich` | `preview({lat, lon, takenAt})`, `countries` | `protectedProcedure` + rate limit |
-| `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. 10 min. |
+| `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
 | REST `POST /api/uploads` | multipart: `tripId`, `postId`, `file` | session + medlemskab |
 
 **Fælles adgangs-middleware:** `tripMemberProcedure` læser `tripId` fra input, slår `TripMember` op og kaster `FORBIDDEN`/`NOT_FOUND`. Alle procedurer, der rører rejsedata, skal bygge på den (risiko 3 i risikoanalysen). Upload-routen genbruger den samme funktion `assertTripMember(userId, tripId)`.
@@ -407,11 +407,11 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 **Lavet**
 - **Redigér/slet egne indlæg (1):** "Redigér tekst" og "Slet" på egne indlæg i detaljevisningen (også i master/detail). Begge dele virker offline: ændringen gemmes i SQLite med det samme (ny kolonne `pendingOp`, lokal migration v2) og sendes af upload-køen med `posts.update`/`posts.delete` efter nye indlæg. En rettelse overskrives ikke af hentningen fra serveren, mens den venter. Et indlæg, der slettes før upload, sendes aldrig op. Serverfejl prøves igen, og afvisninger (FORBIDDEN/NOT_FOUND/BAD_REQUEST) droppes, så de ikke prøves for evigt. Sted, vejr og billede kan ikke redigeres, fordi de er målt, da billedet blev taget.
 - **Oprydning i bucket'en:** `posts.delete` sletter nu også et billede, der blev uploadet, men aldrig koblet på et indlæg (fx hvis appen blev lukket mellem upload og `posts.create`).
-- **Grupperejser med invitationskode (2):** `invites`-routeren (`createCode`, `revokeCode`, `join`). Koden er 6 tegn uden 0/O og 1/I og passer stadig til `^[A-Z0-9]{6}$`. Kun ejeren ser og styrer koden; `join` er idempotent og begrænset til 10 forsøg pr. bruger pr. 10 minutter (i hukommelsen, se `services/attempt-limiter.ts`). I appen: "Tilslut" under Rejser og en invitér-knap på egne rejser med "Del kode" (systemets delemenu) og "Stop invitationer". Invitationer kræver net; resten af appen virker stadig offline.
+- **Grupperejser med invitationskode (2):** `invites`-routeren (`createCode`, `revokeCode`, `join`). Koden er 6 tegn uden 0/O og 1/I og passer stadig til `^[A-Z0-9]{6}$`. Kun ejeren ser og styrer koden; `join` er idempotent og begrænset til 10 forsøg pr. bruger og 20 forkerte koder pr. IP pr. 10 minutter (i hukommelsen, se `services/attempt-limiter.ts`). IP-grænsen er nødvendig, fordi konti er billige: med kun en grænse pr. bruger kunne én IP oprette ~7.000 konti i døgnet og gætte ~10 mio. koder. IP-grænsen virker kun bag proxyen, når `TRUST_PROXY` er sat. I appen: "Tilslut" under Rejser og en invitér-knap på egne rejser med "Del kode" (systemets delemenu) og "Stop invitationer". Invitationer kræver net; resten af appen virker stadig offline.
 - **Filter i galleriet (3):** filtrér på person og dag (vises kun, når der er mere end én at vælge mellem). Filtreringen sker i appen på de lokale data.
 
-**Tests** (79 i alt, før 58)
-- `invites`: kode på 6 tegn og samme kode ved næste kald, kun ejeren kan styre koden, medlemmer ser ikke koden, koden giver kun adgang til den ene rejse, idempotent join, ugyldigt format/ukendt kode, fjernet kode, 429 efter 10 forsøg.
+**Tests** (80 i alt, før 58)
+- `invites`: kode på 6 tegn og samme kode ved næste kald, kun ejeren kan styre koden, medlemmer ser ikke koden, koden giver kun adgang til den ene rejse, idempotent join, ugyldigt format/ukendt kode, fjernet kode, 429 efter 10 forsøg pr. bruger og efter 20 forkerte koder fra samme IP (på tværs af konti).
 - `access-control`: `invites.createCode`/`revokeCode` giver NOT_FOUND for ikke-medlemmer.
 - `sync.e2e`: rettelse offline → sendt ved net, rettelse der fejler overskrives ikke af hentningen, rettelse før upload, sletning offline inkl. billede i bucket og lokal fil, sletning før upload sendes aldrig, forældreløst billede fjernes, andres indlæg kan ikke slettes (og kommer tilbage).
 
@@ -420,6 +420,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 **Ikke lavet / kendte begrænsninger**
 - Man kan ikke forlade en rejse, og ejeren kan ikke fjerne medlemmer.
 - Antal i gruppen opdateres først ved næste hentning (hvert 5. minut eller ved pull-to-refresh).
-- Grænsen på `join` ligger i hukommelsen og nulstilles ved genstart. Det er nok med én serverinstans.
+- Grænserne på `join` ligger i hukommelsen og nulstilles ved genstart. Det er nok med én serverinstans.
+- Koderne udløber ikke af sig selv; ejeren kan stoppe dem. Mulig forbedring: udløb efter fx 7 dage.
 
 **Næste skridt:** deploy (uge 3 mandag), derefter Should-features 4) Next.js-webvisning og 5) kortvisning.
