@@ -4,6 +4,10 @@ WORKDIR /app
 COPY . .
 RUN --mount=type=secret,id=web_env,target=/app/apps/web/.env.local --mount=type=secret,id=server_env,target=/app/apps/server/.env.local --mount=type=cache,target=/root/.npm npm install
 
+# Prisma-klienten (packages/db/prisma/generated) er ikke i git og skal genereres i buildet.
+# generate forbinder ikke til databasen; URL'en skal blot findes, fordi prisma.config kræver den.
+RUN cd packages/db && DATABASE_URL=postgresql://build:build@localhost:5432/build npx --no-install prisma generate
+
 ARG NEXT_PUBLIC_SERVER_URL
 ENV NEXT_PUBLIC_SERVER_URL=${NEXT_PUBLIC_SERVER_URL}
 ENV NODE_ENV=production
