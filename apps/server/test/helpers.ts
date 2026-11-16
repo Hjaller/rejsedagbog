@@ -185,6 +185,7 @@ export async function videoWithLocation({
   codec = "libx264",
   rotate,
   audio = "aac",
+  title = "Trevi",
 }: {
   seconds?: number;
   width?: number;
@@ -193,6 +194,8 @@ export async function videoWithLocation({
   rotate?: number;
   /** Lyd, MP4 ikke kan rumme (fx AMR som fra Androids kamera), gemmes i en .3gp. */
   audio?: string;
+  /** Titel i filens metadata (vises i ffmpegs log, så den kan bruges til at forsøge at snyde valideringen). */
+  title?: string;
 } = {}): Promise<Buffer> {
   const { execFileSync } = await import("node:child_process");
   const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
@@ -211,7 +214,7 @@ export async function videoWithLocation({
         "-c:v", codec, "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", audio,
         ...(audio === "aac" ? [] : ["-ar", "8000", "-ac", "1"]),
         "-metadata", "location=+41.9009+012.4833/",
-        "-metadata", "title=Trevi",
+        "-metadata", `title=${title}`,
         "-y", out,
       ],
       { stdio: "pipe" },

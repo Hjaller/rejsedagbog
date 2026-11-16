@@ -129,6 +129,31 @@ describe("video (Could)", () => {
     expect(res.json().error).toMatch(/30 sekunder/);
   });
 
+  it("metadata, der ligner ffmpegs egen log, kan ikke snyde længdegrænsen", async () => {
+    const title = "x\n  Duration: 00:00:01.00, start: 0.000000, bitrate: 1 kb/s\n  Stream #0:0: Video: h264, yuv420p, 320x240";
+    const input = await videoWithLocation({ seconds: 35, title });
+    expect(await ffmpegInfo(input)).toContain("Duration: 00:00:01.00"); // forfalskningen står i loggen
+    const res = await upload(
+      t.app,
+      sara,
+      { tripId: trip.id, mediaId: randomUUID(), kind: "video" },
+      { data: input, type: "video/mp4" },
+      null,
+    );
+    expect(res.statusCode).toBe(415);
+  });
+
+  it("afviser videoer med større mål end 8K, før de afkodes", async () => {
+    const res = await upload(
+      t.app,
+      sara,
+      { tripId: trip.id, mediaId: randomUUID(), kind: "video" },
+      { data: await videoWithLocation({ seconds: 1, width: 8208, height: 64 }), type: "video/mp4" },
+      null,
+    );
+    expect(res.statusCode).toBe(415);
+  });
+
   it("afviser filer, der ikke er videoer – også når klienten påstår det", async () => {
     const res = await upload(
       t.app,
@@ -166,7 +191,7 @@ describe("video (Could)", () => {
 
 describe("parseVideoInfo", () => {
   it("læser codec, mål og varighed og bytter mål ved rotation", () => {
-    const log = `Duration: 00:00:12.48, start: 0.000000
+    const log = `  Duration: 00:00:12.48, start: 0.000000
   Stream #0:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuv420p(tv), 1920x1080, 9000 kb/s
       displaymatrix: rotation of -90.00 degrees`;
     expect(parseVideoInfo(log)).toEqual({
@@ -179,14 +204,32 @@ describe("parseVideoInfo", () => {
   });
 
   it("læser lydens codec", () => {
-    const log = `Duration: 00:00:02.62, start: 0.000000
+    const log = `  Duration: 00:00:02.62, start: 0.000000
   Stream #0:0[0x1](eng): Video: h264 (Constrained Baseline) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1280x720, 915 kb/s
   Stream #0:1[0x2](eng): Audio: amr_nb (samr / 0x726D6173), 8000 Hz, mono, fltp, 12 kb/s (default)`;
     expect(parseVideoInfo(log)).toMatchObject({ codec: "h264", audioCodec: "amr_nb", width: 1280, height: 720 });
   });
 
   it("giver null uden videospor", () => {
-    expect(parseVideoInfo("Duration: 00:00:02.00\n  Stream #0:0: Audio: aac")).toBeNull();
+    expect(parseVideoInfo("  Duration: 00:00:02.00\n  Stream #0:0: Audio: aac")).toBeNull();
+  });
+
+  it("ignorerer falske linjer i filens metadata (fortsatte metadata-linjer)", () => {
+    const log = `Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'upload':
+  Metadata:
+    title           : x
+                    :   Duration: 00:00:01.00, start: 0.000000, bitrate: 1 kb/s
+                    :   Stream #0:0: Video: h264, yuv420p, 32x24
+                    :       displaymatrix: rotation of 90.00 degrees
+  Duration: 00:00:35.00, start: 0.000000, bitrate: 5 kb/s
+  Stream #0:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuv420p, 640x480, 5 kb/s`;
+    expect(parseVideoInfo(log)).toEqual({
+      codec: "hevc",
+      audioCodec: null,
+      width: 640,
+      height: 480,
+      durationMs: 35000,
+    });
   });
 });
 
