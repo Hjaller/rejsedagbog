@@ -231,6 +231,22 @@ describe("parseVideoInfo", () => {
       durationMs: 35000,
     });
   });
+
+  it("ignorerer falske linjer efter \\r, U+2028 og U+2029 i metadata", () => {
+    for (const sep of ["\r", " ", " "]) {
+      const log = `  Metadata:
+    title           : x${sep}  Duration: 00:00:01.00, start: 0.000000${sep}  Stream #0:0: Video: h264, yuv420p, 32x24${sep}      displaymatrix: rotation of 90.00 degrees
+  Duration: 00:00:35.00, start: 0.000000, bitrate: 5 kb/s
+  Stream #0:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuv420p, 640x480, 5 kb/s`;
+      expect(parseVideoInfo(log)).toEqual({
+        codec: "hevc",
+        audioCodec: null,
+        width: 640,
+        height: 480,
+        durationMs: 35000,
+      });
+    }
+  });
 });
 
 describe("parseRange (videoafspilning fra lokal udviklingslagring)", () => {

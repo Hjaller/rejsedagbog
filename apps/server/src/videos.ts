@@ -93,17 +93,27 @@ const COPY_AUDIO_CODECS = new Set(["aac"]);
  * som ingen metadata har.
  */
 export function parseVideoInfo(log: string): VideoInfo | null {
-  const duration = /^ {2}Duration: (\d+):(\d{2}):(\d{2}(?:\.\d+)?)/m.exec(log);
-  const stream = /^ {2}Stream #\d+:\d+[^:\n]*: Video: (\w+)[^\n]*?, (\d{2,5})x(\d{2,5})/m.exec(log);
+  // Kun "\n" er et linjeskift her. JavaScripts m-flag ville også starte en linje efter
+  // \r, U+2028 og U+2029, og ffmpeg sender U+2028/U+2029 i metadata uændret igennem.
+  const lines = log.split("\n");
+  const first = (re: RegExp) => {
+    for (const line of lines) {
+      const match = re.exec(line);
+      if (match) return match;
+    }
+    return null;
+  };
+  const duration = first(/^ {2}Duration: (\d+):(\d{2}):(\d{2}(?:\.\d+)?)/);
+  const stream = first(/^ {2}Stream #\d+:\d+[^:]*: Video: (\w+).*?, (\d{2,5})x(\d{2,5})/);
   if (!duration || !stream) return null;
   const [, h, m, s] = duration;
   const durationMs = Math.round((Number(h) * 3600 + Number(m) * 60 + Number(s)) * 1000);
   let width = Number(stream[2]);
   let height = Number(stream[3]);
   // Telefoner gemmer en portræt-video liggende med en rotation ved siden af.
-  const rotation = /^\s+displaymatrix: rotation of (-?\d+(?:\.\d+)?) degrees/m.exec(log);
+  const rotation = first(/^ +displaymatrix: rotation of (-?\d+(?:\.\d+)?) degrees/);
   if (rotation && Math.abs(Math.round(Number(rotation[1]))) % 180 === 90) [width, height] = [height, width];
-  const audio = /^ {2}Stream #\d+:\d+[^:\n]*: Audio: (\w+)/m.exec(log);
+  const audio = first(/^ {2}Stream #\d+:\d+[^:]*: Audio: (\w+)/);
   return { codec: stream[1]!, audioCodec: audio?.[1] ?? null, width, height, durationMs };
 }
 
