@@ -15,6 +15,8 @@ Planen følger kravspecifikationens tre uger og MoSCoW-prioritering. Must-krav u
 | 4 | – | Scaffoldets drawer- og tabs-navigation i `apps/native` erstattes af responsiv navigation (bundbar/sidebar) | Navigationen skal følge de tre layouts i afsnit 4 i kravspec. |
 | 5 | REST Countries hentes og caches af appen | **REST Countries v5 via serveren** (`enrich.countries`), cachet i appens SQLite. Danske landenavne og flag ligger i `packages/shared` | v1–v4 (inkl. v3.1) er lukket (4. nov. 2026), og v5 kræver en API-nøgle (`REST_COUNTRIES_API_KEY`), som kun må ligge på serveren. Nøglen er valgfri: uden den vises land og flag, men ikke valuta og sprog. Fordi landelisten ligger i appen, kan en rejse oprettes offline. |
 | 6 | Udvikling kræver net til dev-bucket'en (afsnit 9) | **Lokal billedlagring i udvikling**, når `S3_*` ikke er sat: filer under `apps/server/.data/media`, udleveret via HMAC-signerede links med 15 minutters levetid (`GET /api/media/*`) | Hele upload-flowet kan testes, før S3-udbyderen er valgt. Kun når `NODE_ENV=development`; i drift uden S3 svarer upload 503. URL'erne er relative, og appen sætter sin server-adresse foran. |
+| 7 | Eget kamera med `expo-camera` (afsnit 5) | **Telefonens eget kamera** (`ImagePicker.launchCameraAsync`) **og upload fra albummet** (besluttet 16. nov. 2026) | Bedre billedkvalitet og en kamera-app, brugeren kender. Rejse og position vises derfor på skærmen efter billedet, ikke i søgeren. `expo-camera` er ikke installeret. På Android hentes et billede, hvis appen blev lukket, mens kameraet var åbent (`getPendingResultAsync`). |
+| 8 | Wireframes' udseende og fem faner med flydende "+" | **Redesign D i postkort-stil** (besluttet 16. nov. 2026): papir, blæk og poststempel-rød, Fraunces, Inter og IBM Plex Mono. Fire faner med "+" i midten af bundbaren, profilen som avatar i headeren | Tokens og fælles komponenter ligger i `apps/native/lib/theme.ts`. Nye skærme skal følge stilen. |
 
 Følgende tekst i kravspecifikationen skal opdateres:
 - **Afsnit 2, API/backend:** "Eget REST-API i Fastify" → "Eget API i Fastify med tRPC (Zod-validering) og en REST-route til billedupload".
@@ -168,7 +170,7 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 |---|---|---|
 | `trips` | `list`, `get`, `members`, `create`, `update`, `delete` | `protectedProcedure`; `get/members/update/delete` via `tripMemberProcedure` (`update/delete` kun ejer) |
 | `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `tripMemberProcedure`; `update/delete` kun forfatteren |
-| `enrich` | `preview({lat, lon, takenAt})`, `countries` | `protectedProcedure` + rate limit |
+| `enrich` | `preview({lat, lon, takenAt})`, `searchPlaces({query, countryCode?})`, `countries` | `protectedProcedure` + rate limit |
 | `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
 | REST `POST /api/uploads` | multipart: `tripId`, `postId`, `file` | session + medlemskab |
 
@@ -185,31 +187,43 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 
 ## 5. App: navigation og skærme
 
-Ruter (expo-router):
+Ruter (expo-router), som de ser ud nu:
 
 ```
 app/
-  _layout.tsx               auth-gate (session fra expo-secure-store)
+  _layout.tsx                  auth-gate (session fra expo-secure-store)
+  +not-found.tsx               sender videre til login
   (auth)/sign-in.tsx, sign-up.tsx
-  (app)/_layout.tsx         responsiv navigation (se nedenfor)
-  (app)/index.tsx           Tidslinje (valgt rejse)
-  (app)/gallery.tsx         Galleri
-  (app)/map.tsx             Kort (Should)
-  (app)/trips/index.tsx     Rejser + opret rejse
-  (app)/profile.tsx         Profil / log ud
-  post/new.tsx              Opret indlæg (modal)
-  post/[id].tsx             Detalje
-  viewer/[mediaId].tsx      Fuldskærm med swipe
+  (app)/_layout.tsx            stack over fanerne
+  (app)/(tabs)/_layout.tsx     responsiv navigation (se nedenfor)
+  (app)/(tabs)/index.tsx       Tidslinje (valgt rejse eller "Alle rejser")
+  (app)/(tabs)/gallery.tsx     Galleri
+  (app)/(tabs)/map.tsx         Kort (Should)
+  (app)/(tabs)/trips.tsx       Rejser
+  (app)/profile.tsx            Profil / synkronisering / log ud (åbnes fra avataren)
+  (app)/post/add.tsx           Ark fra "+": tag et billede eller vælg fra album
+  (app)/post/new.tsx           Gemt-skærm: tekst, rejse, sted og vejr
+  (app)/post/place.tsx         Sæt sted (kort + stedsøgning)
+  (app)/post/[id].tsx          Detalje
+  (app)/post/edit/[id].tsx     Redigér tekst
+  (app)/trip/new.tsx           Opret rejse
+  (app)/trip/switch.tsx        Rejsevælger (ark fra headeren)
+  (app)/trip/join.tsx          Tilslut med invitationskode
+  (app)/trip/invite/[id].tsx   Invitationskode (ejer)
+  (app)/trip/members/[id].tsx  Gruppen
+  (app)/viewer/[postId].tsx    Fuldskærm med swipe
 ```
 
-**Responsiv navigation:** brug `expo-router/ui` (headless `Tabs`, `TabList`, `TabSlot`) og en `useBreakpoint()`-hook baseret på `useWindowDimensions`:
-- **< 600 dp:** bundbar med fem faner og flydende "+"-knap. Galleriet har 3 kolonner.
+**Responsiv navigation:** `expo-router/ui` (headless `Tabs`, `TabList`, `TabSlot`) og en `useBreakpoint()`-hook baseret på `useWindowDimensions`:
+- **< 600 dp:** bundbar med fire faner (Tidslinje, Galleri, Kort, Rejser) og "+" i midten. Galleriet har 3 kolonner.
 - **600–840 dp:** sidebar i venstre side med "+" øverst. Galleriet har 5–6 kolonner.
 - **> 840 dp:** sidebar + master/detail. Listen er til venstre, og det valgte indlæg/billede vises til højre i samme skærm, så der ikke navigeres.
 
-Maks. tre tryk fra start til gemt indlæg: "+" → "Tag billede" → (skriv tekst) → "Gem indlæg". Rejsen er forvalgt som den aktive rejse.
+Profilen er en avatar i headeren, og rejsen skiftes i et ark fra headeren.
 
-**Native moduler**, som installeres med `npx expo install`: `expo-camera`, `expo-image-picker`, `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image` (og senere `@maplibre/maplibre-react-native`, `react-native-view-shot`, `expo-video`).
+Maks. tre tryk fra start til gemt indlæg: "+" → "Tag et billede" → udløseren i systemkameraet. Billedet gemmes med det samme i den aktive rejse, og tekst kan skrives bagefter. Fra albummet kan man vælge op til 20 billeder på én gang.
+
+**Native moduler**, som installeres med `npx expo install`: `expo-image-picker` (systemkamera og album, se afsnit 0, punkt 7), `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image` og `@maplibre/maplibre-react-native` (og senere `react-native-view-shot` og `expo-video`, hvis Could-features laves).
 Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges først, når funktionen bruges. Danske tekster sættes i `app.json` (`NSCameraUsageDescription` osv.).
 
 **Web (Should):** Next.js-appen genbruger tRPC-routerne og viser rejseoversigt, tidslinje og galleri som master/detail. Den skal kun kunne læse; der oprettes ikke indlæg på web.
@@ -444,6 +458,55 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - Skærmen "Gruppen" åbnes fra "N i gruppen" i headeren eller fra gruppe-ikonet ved hver rejse under Rejser. Ejeren kommer herfra videre til invitationskoden. Listen gemmes i SQLite og vises offline med "Viser gruppen, som den så ud sidst". Kaldet har en timeout på 8 s, så et dårligt net ikke får skærmen til at hænge. Antal i gruppen opdateres samtidig.
 - Tests: 84 i alt (medlemsliste uden e-mails og med ejeren først; NOT_FOUND for ikke-medlemmer).
 
+**"Alle rejser"**
+- Under Rejser kan man vælge "Alle rejser". Så viser tidslinje, galleri, kort og fuldskærm indlæg fra alle rejser, og hvert indlæg er mærket med rejsens navn. Galleriet kan også filtrere på rejse.
+
 **Kendte begrænsninger:** indlæg på samme sted ligger oven på hinanden (ingen klynger), og en rejse over datolinjen giver et forkert udsnit.
 
 **Næste skridt:** Should 4) Next.js-webvisning (inkl. kort med Leaflet), APK til brugertesten med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`.
+
+### 16. nov. 2026: redesign, upload fra album og "Sæt sted"
+
+**Sæt sted i hånden (API)**
+- `posts.update` tager nu også `lat`/`lon`. Ændres positionen, henter serveren sted og vejr igen for det tidspunkt, hvor billedet blev taget.
+- Ny `enrich.searchPlaces` søger efter steder via Nominatim, først i rejsens land og ellers overalt. Den bruger samme kø som stednavnene.
+- Appen gemmer en ny position offline (`updatePostPosition`) og sender den med rettelsen. Sted og vejr fra serveren skrives tilbage.
+- **Serveren skal deployes før appen.** En ældre server ignorerer positionen.
+- Tests i `posts` og `sync.e2e`.
+
+**Redesign D i postkort-stil (appen)**
+- Hele appen følger redesign D (afsnit 0, punkt 8). Tidslinjen er grupperet i rejsedage, indlæg vises som postkort og rejser som frimærker.
+- "+" åbner et ark med "Tag et billede" (systemkameraet) og "Vælg fra album" (op til 20 billeder). Billederne gemmes med det samme (D1/D2).
+- Rejsevælger som ark fra headeren (D3) og en forklaring, før appen beder om placeringstilladelse (D4).
+- **Position:**
+  - Har kameraet været åbent i over 30 s, måles positionen igen.
+  - Gamle albumbilleder uden GPS får ikke den nuværende position.
+  - Billeder uden position kan få et sted på den nye skærm "Sæt sted" (kort og stedsøgning). Den åbnes fra gemt-skærmen og fra indlæggets handlinger.
+- På Android hentes et billede ved næste start, hvis appen blev lukket, mens kameraet var åbent.
+
+**Rettelser**
+- Expo web: Metro bundler nu `.wasm` og sender COOP/COEP-headers, så expo-sqlite virker i browseren.
+- Tidslinjen: dag-overskrifter fik samme key, når "Alle rejser" viste to rejser med billeder fra samme dag.
+- "Brug min position" i "Sæt sted" kunne hænge med en spinner, hvis kaldet om tilladelse fejlede.
+- `unstable_settings.initialRouteName` er skiftet til `anchor` (udfaset i Expo Router).
+
+**Mangler (samlet pr. 16. nov.)**
+- **Deploy:** serveren skal deployes med `posts.update`-positionen og `enrich.searchPlaces`, før en ny APK laves. Skift til en separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler).
+- **Should 4) Next.js-webvisning:** `apps/web` har stadig kun scaffoldets login og dashboard. Den skal vise rejseoversigt, tidslinje og galleri som master/detail plus et kort med Leaflet og OSM, og den skal kun kunne læse.
+- **Brugertest:** byg en APK med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`, test med mindst én medstuderende, og lav og dokumentér rettelserne.
+- **Testmatrix (afsnit 7):**
+  - layouts på lille telefon, foldbar, tablet og web, i portræt og landskab.
+  - en fysisk telefon og iOS.
+  - sikkerhedstjek: søg Git igennem for nøgler (`git grep`) og tjek, at der ikke er EXIF på postkort.
+  - Redesignet er ikke gennemtestet på alle tre layouts.
+- **README:** "Deployment" er stadig scaffoldets Docker Compose-tekst. Den skal beskrive Coolify, env, `TRUST_PROXY` og Hetzner.
+- **Kravspecifikationen:** tekstændringerne i afsnit 0 skal ind.
+- **Præsentation og fremlæggelse.**
+- **Could** (kun hvis der er tid): video, deling af postkort, diasshow.
+- **Kendte begrænsninger, der ikke er planlagt:**
+  - Man kan ikke forlade en rejse, og ejeren kan ikke fjerne medlemmer.
+  - Invitationskoder udløber ikke.
+  - Kortet laver ingen klynger.
+  - En rejse over datolinjen giver et forkert kortudsnit.
+
+**Næste skridt:** deploy serveren, og byg derefter APK'en til brugertesten. Should 4) webvisningen laves sideløbende.
