@@ -1,4 +1,4 @@
-import type { Weather } from "@rejsedagbog/shared";
+import type { PlaceSearchResult, Weather } from "@rejsedagbog/shared";
 
 /**
  * Berigelse af indlæg med stednavn (Nominatim/OpenStreetMap) og vejr (Open-Meteo).
@@ -156,6 +156,53 @@ function formatPlaceName(data: NominatimResponse): string | null {
 function countryCodeOf(data: NominatimResponse): string | null {
   const cc = data.address?.country_code;
   return cc && /^[a-z]{2}$/i.test(cc) ? cc.toUpperCase() : null;
+}
+
+type NominatimSearchHit = NominatimResponse & { lat?: string; lon?: string; display_name?: string };
+
+const searchCache = new TtlCache<PlaceSearchResult[]>(24 * 3600_000, 500);
+const SEARCH_LIMIT = 6;
+
+/**
+ * Stedsøgning, når brugeren selv sætter stedet på et indlæg. Kaldes først, når der
+ * trykkes "Søg" (Nominatims brugspolitik forbyder søgning, mens man skriver), og går
+ * gennem samme kø som stednavnene. Rejsens land foretrækkes: findes intet dér, søges overalt.
+ */
+export async function searchPlaces(
+  query: string,
+  countryCode: string | null | undefined,
+  userId: string,
+): Promise<PlaceSearchResult[]> {
+  const cc = countryCode?.toLowerCase() ?? null;
+  const key = `${cc ?? "*"}|${query.toLowerCase()}`;
+  const cached = searchCache.get(key);
+  if (cached) return cached;
+
+  const run = async (countrycodes: string | null) => {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    const params = new URLSearchParams({ format: "jsonv2", q: query, limit: String(SEARCH_LIMIT), addressdetails: "1" });
+    if (countrycodes) params.set("countrycodes", countrycodes);
+    url.search = params.toString();
+    const data = await withDeadline(throttledNominatim(userId, () => fetchJson(url.toString())));
+    return Array.isArray(data) ? (data as NominatimSearchHit[]).map(toSearchResult).filter((r) => r !== null) : [];
+  };
+
+  let results = await run(cc);
+  if (results.length === 0 && cc) results = await run(null);
+  searchCache.set(key, results);
+  return results;
+}
+
+function toSearchResult(hit: NominatimSearchHit): PlaceSearchResult | null {
+  const lat = Number(hit.lat);
+  const lon = Number(hit.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const a = hit.address ?? {};
+  const name = hit.name || hit.display_name?.split(",")[0]?.trim();
+  if (!name) return null;
+  const town = a.city || a.town || a.village || a.municipality || a.county;
+  const detail = [town, a.country].filter((p, i, arr): p is string => !!p && p !== name && arr.indexOf(p) === i);
+  return { name, detail: detail.length ? detail.join(", ") : null, lat, lon };
 }
 
 // ---------------------------------------------------------------------------

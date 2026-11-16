@@ -89,19 +89,38 @@ export const postsRouter = router({
     return toPostDto(post, ctx.storage);
   }),
 
-  /** Kun forfatteren kan redigere. "Seneste ændring vinder" via updatedAt. */
+  /**
+   * Kun forfatteren kan redigere. "Seneste ændring vinder" via updatedAt.
+   * Med en ny position (sat i hånden) findes sted og vejr på ny.
+   */
   update: tripMemberProcedure.input(postUpdateInput).mutation(async ({ ctx, input }) => {
+    const userId = ctx.session.user.id;
     const post = await ctx.db.post.findFirst({
       where: { id: input.postId, tripId: input.tripId, deletedAt: null },
-      select: { authorId: true },
+      select: { authorId: true, lat: true, lon: true, takenAt: true },
     });
     if (!post) throw notFound();
-    if (post.authorId !== ctx.session.user.id) {
+    if (post.authorId !== userId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Du kan kun redigere dine egne indlæg" });
     }
+
+    const moved = input.lat != null && input.lon != null && (input.lat !== post.lat || input.lon !== post.lon);
+    let place: Prisma.PostUpdateInput = {};
+    if (moved) {
+      const enrichment = await enrich(input.lat!, input.lon!, post.takenAt, userId);
+      place = {
+        lat: input.lat,
+        lon: input.lon,
+        // Det gamle sted og vejr hører til den gamle position, så de nulstilles, hvis berigelsen fejler.
+        placeName: enrichment.placeName,
+        weather: enrichment.weather ? (enrichment.weather as Prisma.InputJsonValue) : Prisma.DbNull,
+        ...(enrichment.countryCode ? { countryCode: enrichment.countryCode } : {}),
+      };
+    }
+
     const updated = await ctx.db.post.update({
       where: { id: input.postId },
-      data: { text: input.text },
+      data: { text: input.text, ...place },
       include: postInclude,
     });
     return toPostDto(updated, ctx.storage);

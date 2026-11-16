@@ -195,10 +195,17 @@ async function pushChanges(deps: SyncDeps, db: LocalDb) {
         }
         deleteLocalFile(deps, await finishPendingDelete(db, change.id));
       } else {
+        // Positionen sendes med; serveren finder kun sted og vejr på ny, hvis den er ændret.
         const dto = await call(() =>
-          deps.api.posts.update.mutate({ tripId: change.tripId, postId: change.id, text: change.text }),
+          deps.api.posts.update.mutate({
+            tripId: change.tripId,
+            postId: change.id,
+            text: change.text,
+            lat: change.lat,
+            lon: change.lon,
+          }),
         );
-        await finishPendingUpdate(db, change.id, change.text, dto);
+        await finishPendingUpdate(db, change, dto);
       }
       pushed++;
     } catch (err) {

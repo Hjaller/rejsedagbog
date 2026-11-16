@@ -208,6 +208,26 @@ export async function updatePostText(db: LocalDb, postId: string, text: string):
 }
 
 /**
+ * Sætter positionen på et af brugerens egne indlæg (fx et billede fra albummet uden
+ * GPS). Sted og vejr nulstilles; serveren finder dem ud fra den nye position, når
+ * indlægget eller rettelsen sendes.
+ */
+export async function updatePostPosition(
+  db: LocalDb,
+  postId: string,
+  coords: { lat: number; lon: number },
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE posts SET lat = ?, lon = ?, placeName = NULL, weatherJson = NULL, updatedAt = ?, pendingOp = 'update'
+      WHERE id = ? AND deletedAt IS NULL`,
+    coords.lat,
+    coords.lon,
+    new Date().toISOString(),
+    postId,
+  );
+}
+
+/**
  * Sletter et af brugerens egne indlæg. Det forsvinder fra skærmene med det samme;
  * rækken bliver liggende, indtil upload-køen har slettet det på serveren (posts.delete)
  * – også hvis det aldrig nåede derop, for et svar kan være gået tabt undervejs.

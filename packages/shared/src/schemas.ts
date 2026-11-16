@@ -59,11 +59,19 @@ export const postCreateInput = z.object({
 });
 export type PostCreateInput = z.infer<typeof postCreateInput>;
 
-export const postUpdateInput = z.object({
-  tripId: z.uuid(),
-  postId: z.uuid(),
-  text: postText,
-});
+/**
+ * `lat`/`lon` er valgfrie: med dem flyttes indlægget dertil (fx et billede fra albummet
+ * uden position), og sted og vejr findes på ny. Uden dem rettes kun teksten.
+ */
+export const postUpdateInput = z
+  .object({
+    tripId: z.uuid(),
+    postId: z.uuid(),
+    text: postText,
+    lat: latitude.nullish(),
+    lon: longitude.nullish(),
+  })
+  .refine((v) => (v.lat == null) === (v.lon == null), "Både bredde- og længdegrad skal angives");
 export type PostUpdateInput = z.infer<typeof postUpdateInput>;
 
 export const postRefInput = z.object({ tripId: z.uuid(), postId: z.uuid() });
@@ -87,6 +95,25 @@ export const enrichPreviewInput = z.object({
   lon: longitude,
   takenAt: isoDateTime,
 });
+
+/** Søgning efter et sted at sætte på et indlæg. `countryCode` foretrækker rejsens land. */
+export const placeSearchInput = z.object({
+  query: z.string().trim().min(2, "Skriv mindst 2 tegn").max(120, "Højst 120 tegn"),
+  countryCode: z
+    .string()
+    .regex(/^[A-Za-z]{2}$/)
+    .nullish(),
+});
+export type PlaceSearchInput = z.infer<typeof placeSearchInput>;
+
+export type PlaceSearchResult = {
+  /** Kort navn, fx "Colosseum". */
+  name: string;
+  /** Resten af adressen, fx "Rom, Italien". */
+  detail: string | null;
+  lat: number;
+  lon: number;
+};
 
 export const signInInput = z.object({
   email: z.email("Indtast en gyldig e-mailadresse").trim(),

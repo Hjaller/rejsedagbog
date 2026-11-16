@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createTestApp, mutate, newTripInput, query, signUp, type TestContext, type TestUser } from "./helpers";
 
@@ -110,5 +110,78 @@ describe("indlæg i en grupperejse", () => {
     );
     expect(!res.ok && res.code).toBe("BAD_REQUEST");
     if (!res.ok) expect(res.message).toBe("Højst 500 tegn");
+  });
+
+  describe("sted sat i hånden (posts.update med position)", () => {
+    let fetchedUrls: string[] = [];
+
+    beforeEach(() => {
+      fetchedUrls = [];
+      // Nominatim og Open-Meteo mockes; vejret udelades, så kun stednavnet tjekkes.
+      vi.stubGlobal("fetch", (url: string) => {
+        fetchedUrls.push(url);
+        const body = url.includes("nominatim")
+          ? { name: "Colosseum", address: { city: "Rom", country_code: "it" } }
+          : {};
+        return Promise.resolve({ ok: true, json: async () => body });
+      });
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("forfatteren kan sætte en position, og sted findes på ny", async () => {
+      const postId = randomUUID();
+      await mutate(t.app, "posts.create", { id: postId, tripId: trip.id, text: "Fra albummet", takenAt: "2026-05-16T10:00:00Z" }, sara);
+
+      const res = await mutate<Record<string, unknown>>(
+        t.app,
+        "posts.update",
+        { tripId: trip.id, postId, text: "Fra albummet", lat: 41.8902, lon: 12.4922 },
+        sara,
+      );
+      expect(res.ok && res.data).toMatchObject({ lat: 41.8902, lon: 12.4922, placeName: "Colosseum, Rom", countryCode: "IT" });
+      expect(fetchedUrls.some((u) => u.includes("nominatim"))).toBe(true);
+
+      // Samme position igen (fx kun teksten rettet): ingen ny berigelse.
+      fetchedUrls = [];
+      const textOnly = await mutate<Record<string, unknown>>(
+        t.app,
+        "posts.update",
+        { tripId: trip.id, postId, text: "Rettet tekst", lat: 41.8902, lon: 12.4922 },
+        sara,
+      );
+      expect(textOnly.ok && textOnly.data).toMatchObject({ text: "Rettet tekst", placeName: "Colosseum, Rom" });
+      expect(fetchedUrls).toEqual([]);
+    });
+
+    it("et andet medlem kan ikke flytte indlægget", async () => {
+      const postId = randomUUID();
+      await mutate(t.app, "posts.create", { id: postId, tripId: trip.id, text: "", takenAt: "2026-05-16T11:00:00Z" }, sara);
+      const res = await mutate(t.app, "posts.update", { tripId: trip.id, postId, text: "", lat: 41.9, lon: 12.5 }, jonas);
+      expect(!res.ok && res.code).toBe("FORBIDDEN");
+      const row = await t.db.post.findUniqueOrThrow({ where: { id: postId } });
+      expect(row.lat).toBeNull();
+    });
+
+    it("afviser bredde- uden længdegrad", async () => {
+      const postId = randomUUID();
+      await mutate(t.app, "posts.create", { id: postId, tripId: trip.id, text: "", takenAt: "2026-05-16T12:00:00Z" }, sara);
+      const res = await mutate(t.app, "posts.update", { tripId: trip.id, postId, text: "", lat: 41.9 }, sara);
+      expect(!res.ok && res.code).toBe("BAD_REQUEST");
+    });
+
+    it("stedsøgning foretrækker rejsens land og søger overalt, hvis intet findes dér", async () => {
+      vi.stubGlobal("fetch", (url: string) => {
+        fetchedUrls.push(url);
+        const hits = url.includes("countrycodes=")
+          ? []
+          : [{ name: "Tivoli", lat: "55.6737", lon: "12.5681", address: { city: "København", country: "Danmark" } }];
+        return Promise.resolve({ ok: true, json: async () => hits });
+      });
+      const res = await mutate<unknown[]>(t.app, "enrich.searchPlaces", { query: "Tivoli", countryCode: "IT" }, sara);
+      expect(res.ok && res.data).toEqual([{ name: "Tivoli", detail: "København, Danmark", lat: 55.6737, lon: 12.5681 }]);
+      expect(fetchedUrls).toHaveLength(2);
+      expect(fetchedUrls[0]).toContain("countrycodes=it");
+    });
   });
 });

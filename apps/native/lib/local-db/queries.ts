@@ -20,6 +20,7 @@ import {
   replaceCountryFacts,
   setMeta,
   setTripInviteCode,
+  updatePostPosition,
   updatePostText,
   type LocalTrip,
   type NewLocalPost,
@@ -204,6 +205,25 @@ export function useUpdatePostText() {
   return useMutation({
     networkMode: "always",
     mutationFn: ({ postId, text }: { postId: string; text: string }) => updatePostText(db, postId, text),
+    onSuccess: () => {
+      void invalidate();
+      void requestSync();
+    },
+  });
+}
+
+/**
+ * Sætter positionen på et eller flere egne indlæg (samme sted til alle). Gemmes lokalt og
+ * sendes af upload-køen, så det virker offline; sted og vejr findes af serveren.
+ */
+export function useSetPostPosition() {
+  const { db } = useLocalDb();
+  const invalidate = useInvalidateLocal();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: async ({ postIds, coords }: { postIds: string[]; coords: { lat: number; lon: number } }) => {
+      for (const id of postIds) await updatePostPosition(db, id, coords);
+    },
     onSuccess: () => {
       void invalidate();
       void requestSync();

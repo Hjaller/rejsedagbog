@@ -111,7 +111,7 @@ export async function markPostFailed(db: LocalDb, postId: string, attempts: numb
 // Rettelser og sletninger af egne indlæg
 // ---------------------------------------------------------------------------
 
-export type PendingChange = Pick<LocalPost, "id" | "tripId" | "text" | "localImageUri"> & {
+export type PendingChange = Pick<LocalPost, "id" | "tripId" | "text" | "lat" | "lon" | "localImageUri"> & {
   pendingOp: "update" | "delete";
 };
 
@@ -121,22 +121,34 @@ export type PendingChange = Pick<LocalPost, "id" | "tripId" | "text" | "localIma
  */
 export function listPendingChanges(db: LocalDb): Promise<PendingChange[]> {
   return db.getAllAsync<PendingChange>(
-    `SELECT id, tripId, text, localImageUri, pendingOp FROM posts
+    `SELECT id, tripId, text, lat, lon, localImageUri, pendingOp FROM posts
       WHERE pendingOp = 'delete' OR (pendingOp = 'update' AND syncStatus = 'synkroniseret')
       ORDER BY updatedAt`,
   );
 }
 
 /**
- * Rettelsen er gemt på serveren. Er teksten ændret igen imens, bliver den stående
- * som ventende, så den nye tekst sendes ved næste kørsel.
+ * Rettelsen er gemt på serveren, og sted og vejr fra serveren skrives ind (de er fundet
+ * på ny, hvis positionen blev ændret). Er tekst eller position ændret igen imens, bliver
+ * rettelsen stående som ventende, så det nye sendes ved næste kørsel.
  */
-export async function finishPendingUpdate(db: LocalDb, postId: string, sentText: string, dto: PostDto) {
+export async function finishPendingUpdate(
+  db: LocalDb,
+  sent: Pick<PendingChange, "id" | "text" | "lat" | "lon">,
+  dto: PostDto,
+) {
   await db.runAsync(
-    "UPDATE posts SET pendingOp = NULL, updatedAt = ? WHERE id = ? AND pendingOp = 'update' AND text = ?",
+    `UPDATE posts SET pendingOp = NULL, updatedAt = ?, placeName = ?, weatherJson = ?,
+       countryCode = COALESCE(?, countryCode)
+     WHERE id = ? AND pendingOp = 'update' AND text = ? AND lat IS ? AND lon IS ?`,
     dto.updatedAt,
-    postId,
-    sentText,
+    dto.placeName,
+    dto.weather ? JSON.stringify(dto.weather) : null,
+    dto.countryCode,
+    sent.id,
+    sent.text,
+    sent.lat,
+    sent.lon,
   );
 }
 

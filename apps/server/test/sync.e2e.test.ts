@@ -7,7 +7,7 @@ import path from "node:path";
 
 import type { AppRouter } from "@rejsedagbog/api/routers/index";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   countPending,
@@ -15,6 +15,7 @@ import {
   insertTrip,
   listPosts,
   markPostDeleted,
+  updatePostPosition,
   updatePostText,
   type LocalPost,
 } from "../../native/lib/local-db/repo";
@@ -348,6 +349,40 @@ describe("synkronisering (upload-kø og hentning)", () => {
     await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
     expect((await t.db.post.findUniqueOrThrow({ where: { id } })).text).toBe("Færdig tekst");
     expect((await localPost(id))?.pendingOp).toBeNull();
+  });
+
+  it("et sted sat i hånden offline sendes, når nettet kommer, og serveren finder stednavnet", async () => {
+    const id = await newLocalPost("Fra albummet uden GPS", false);
+    await runSyncWith(makeDeps(baseUrl, sara), local, { pull: false, ignoreBackoff: true });
+
+    await updatePostPosition(local, id, { lat: 48.8584, lon: 2.2945 });
+    expect(await localPost(id)).toMatchObject({ lat: 48.8584, lon: 2.2945, placeName: null, pendingOp: "update" });
+
+    const offline = await runSyncWith(makeDeps(DEAD_URL, sara), local, { pull: true, ignoreBackoff: true });
+    expect(offline.offline).toBe(true);
+    expect((await t.db.post.findUniqueOrThrow({ where: { id } })).lat).toBeNull();
+
+    // Kun Nominatim og Open-Meteo mockes; kaldene til testserveren går igennem.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith("http://127.0.0.1")) return realFetch(input, init);
+      const body = url.includes("nominatim") ? { name: "Eiffeltårnet", address: { city: "Paris", country_code: "fr" } } : {};
+      return Promise.resolve(new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } }));
+    });
+    try {
+      const online = await runSyncWith(makeDeps(baseUrl, sara), local, { pull: true, ignoreBackoff: true });
+      expect(online.changesPushed).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(await t.db.post.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      lat: 48.8584,
+      lon: 2.2945,
+      placeName: "Eiffeltårnet, Paris",
+    });
+    expect(await localPost(id)).toMatchObject({ placeName: "Eiffeltårnet, Paris", pendingOp: null });
   });
 
   it("sletning offline: væk med det samme, og slettet på serveren med billede, når nettet kommer", async () => {
