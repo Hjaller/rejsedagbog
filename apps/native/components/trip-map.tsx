@@ -30,7 +30,7 @@ try {
   // Uden native modul (fx i tests) bruges MapLibres standard-User-Agent.
 }
 
-function osmStyle(dark: boolean, background: string): StyleSpecification {
+export function osmStyle(dark: boolean, background: string): StyleSpecification {
   return {
     version: 8,
     sources: {
@@ -141,23 +141,29 @@ export function TripMap({
         <Ionicons name="scan-outline" size={22} color={p.text} />
       </Pressable>
 
-      {/* OSM kræver synlig kreditering på kortet. */}
-      <Pressable
-        onPress={() => Linking.openURL(OSM_COPYRIGHT)}
-        accessibilityRole="link"
-        style={{
-          position: "absolute",
-          right: 0,
-          bottom: 0,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          backgroundColor: "rgba(255,255,255,0.75)",
-          borderTopLeftRadius: 4,
-        }}
-      >
-        <Text style={{ fontSize: 11, color: "#333" }}>© OpenStreetMap-bidragydere</Text>
-      </Pressable>
+      <OsmAttribution />
     </View>
+  );
+}
+
+/** OSM kræver synlig kreditering på kortet. */
+export function OsmAttribution() {
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(OSM_COPYRIGHT)}
+      accessibilityRole="link"
+      style={{
+        position: "absolute",
+        right: 0,
+        bottom: 0,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: "rgba(255,255,255,0.75)",
+        borderTopLeftRadius: 4,
+      }}
+    >
+      <Text style={{ fontSize: 11, color: "#333" }}>© OpenStreetMap-bidragydere</Text>
+    </Pressable>
   );
 }
 

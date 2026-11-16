@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { countryName, formatCountryFacts, formatWeather, weatherLabel } from "@rejsedagbog/shared";
+import { countryName, flagEmoji, formatCountryFacts, formatWeather, weatherLabel } from "@rejsedagbog/shared";
 import { Image } from "expo-image";
 import { Pressable, Text, View } from "react-native";
 
@@ -8,7 +8,7 @@ import { SyncIcon, syncLabel } from "@/components/sync-status";
 import { formatDateTimeLong, formatRelative } from "@/lib/dates";
 import { postImageSource, type LocalPost } from "@/lib/local-db/repo";
 import { useCountryFacts } from "@/lib/local-db/queries";
-import { radius, space, usePalette, type Palette } from "@/lib/theme";
+import { radius, space, typo, usePalette, type Palette } from "@/lib/theme";
 
 // ---------------------------------------------------------------------------
 // Fælles hjælpere
@@ -32,6 +32,63 @@ export function weatherShort(post: LocalPost): string {
 }
 
 const isPending = (post: LocalPost) => post.syncStatus !== "synkroniseret";
+
+const MONTHS_SHORT = ["JAN", "FEB", "MAR", "APR", "MAJ", "JUN", "JUL", "AUG", "SEP", "OKT", "NOV", "DEC"];
+
+/** Stemplets tre linjer: sted, dato og vejr, som på et poststempel. */
+function postmarkLines(post: LocalPost): string[] {
+  const date = new Date(post.takenAt);
+  const place = post.placeName?.split(",")[0]?.trim().toUpperCase();
+  const lines = [
+    place && place.length <= 12 ? place : (place?.slice(0, 11) ?? "").concat(place ? "…" : ""),
+    `${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}`,
+    post.weather
+      ? `${Math.round(post.weather.tempC)}° ${weatherLabel(post.weather.code).split(" ")[0]!.toUpperCase()}`
+      : "",
+  ];
+  return lines;
+}
+
+/** Hvert indlæg får sin egen lille drejning, så tidslinjen ikke ser stanset ud. */
+function stampTilt(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return `${(Math.abs(h) % 21) - 12}deg`;
+}
+
+/** Poststempel over billedet med sted, dato og vejr (redesign D). */
+function Postmark({ post, size = 84 }: { post: LocalPost; size?: number }) {
+  const [place, date, weather] = postmarkLines(post);
+  const shadow = { textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 3 } as const;
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 2,
+        borderColor: "rgba(255,255,255,0.9)",
+        backgroundColor: "rgba(0,0,0,0.16)",
+        alignItems: "center",
+        justifyContent: "center",
+        transform: [{ rotate: stampTilt(post.id) }],
+      }}
+    >
+      {place ? (
+        <Text style={[typo.eyebrow, shadow, { color: "#FFFFFF", fontSize: 9, letterSpacing: 1 }]}>{place}</Text>
+      ) : null}
+      <Text style={[typo.eyebrow, shadow, { color: "#FFFFFF", fontSize: 15, letterSpacing: 0.5 }]}>{date}</Text>
+      {weather ? (
+        <Text style={[typo.eyebrow, shadow, { color: "#FFFFFF", fontSize: 9, letterSpacing: 1 }]}>{weather}</Text>
+      ) : null}
+    </View>
+  );
+}
 
 function PostImage({
   post,
@@ -63,8 +120,23 @@ function PostImage({
   );
 }
 
+/** Kort status til kort og lister: kun når indlægget ikke er sendt endnu. */
+function PendingNote({ post, size = 13 }: { post: LocalPost; size?: number }) {
+  const p = usePalette();
+  if (!isPending(post) && !post.pendingOp) return null;
+  const label = isPending(post) ? syncLabel(post.syncStatus) : "rettelse venter";
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      <SyncIcon status={isPending(post) ? post.syncStatus : "lokal"} size={size + 2} />
+      <Text style={{ color: p.accentText, fontSize: size, fontWeight: "600" }}>
+        {label.charAt(0).toUpperCase() + label.slice(1)}
+      </Text>
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Kort i tidslinjen (mobil)
+// Postkort i tidslinjen (mobil)
 // ---------------------------------------------------------------------------
 
 export function PostCard({
@@ -81,6 +153,7 @@ export function PostCard({
 }) {
   const p = usePalette();
   const pending = isPending(post);
+  const hasImage = !!postImageSource(post, "full");
   return (
     <Pressable
       onPress={onPress}
@@ -88,41 +161,41 @@ export function PostCard({
       accessibilityLabel={`${placeLabel(post)}. ${post.text}`}
       style={({ pressed }) => ({
         backgroundColor: p.surface,
-        borderRadius: radius.lg,
+        borderRadius: radius.sm,
         borderCurve: "continuous",
-        borderWidth: 1,
+        borderWidth: pending ? 1.5 : 1,
         borderColor: pending ? p.borderStrong : p.border,
-        // Stiplet ramme = ikke uploadet endnu (wireframe)
+        // Stiplet ramme = ikke sendt endnu, som et postkort, der ikke er afsendt.
         borderStyle: pending ? "dashed" : "solid",
-        overflow: "hidden",
+        padding: 10,
+        paddingBottom: 14,
+        gap: space.md,
         opacity: pressed ? 0.85 : 1,
       })}
     >
-      <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3 }} />
-      <View style={{ padding: space.md, gap: space.xs }}>
+      <View>
+        <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: 2 }} />
+        {hasImage ? <Postmark post={post} /> : null}
+      </View>
+      <View style={{ paddingHorizontal: space.xs, gap: 6 }}>
         {tripLabel ? (
-          <Text style={{ color: p.text, fontSize: 12, fontWeight: "600", letterSpacing: 0.4 }} numberOfLines={1}>
-            {tripLabel}
+          <Text style={[typo.eyebrow, { color: p.textMuted }]} numberOfLines={1}>
+            {tripLabel.toUpperCase()}
           </Text>
         ) : null}
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space.sm }}>
-          <Text style={{ color: p.textMuted, fontSize: 13, flexShrink: 1 }} numberOfLines={1}>
-            {placeLabel(post)}
-          </Text>
-          <Text style={{ color: p.textMuted, fontSize: 13 }}>{weatherShort(post)}</Text>
-        </View>
+        <Text style={[typo.heading, { color: p.text, fontSize: 21 }]} numberOfLines={1}>
+          {placeLabel(post)}
+        </Text>
         {post.text ? (
-          <Text style={{ color: p.text, fontSize: 17 }} numberOfLines={3}>
+          <Text style={[typo.note, { color: p.text }]} numberOfLines={4}>
             {post.text}
           </Text>
         ) : null}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-          <SyncIcon status={post.syncStatus} />
-          <Text
-            style={{ color: pending ? p.text : p.textMuted, fontSize: 13, fontWeight: pending ? "600" : "400" }}
-          >
-            {authorLabel(post, currentUserId)} · {formatRelative(post.takenAt)} · {syncLabel(post.syncStatus)}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: 2 }}>
+          <Text style={{ flex: 1, color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
+            {authorLabel(post, currentUserId)} · {formatRelative(post.takenAt)}
           </Text>
+          <PendingNote post={post} />
         </View>
       </View>
     </Pressable>
@@ -130,7 +203,7 @@ export function PostCard({
 }
 
 // ---------------------------------------------------------------------------
-// Række i master-listen (tablet/stor skærm)
+// Række i master-listen (tablet/stor skærm) og på kortet
 // ---------------------------------------------------------------------------
 
 export function PostListItem({
@@ -158,13 +231,13 @@ export function PostListItem({
         flexDirection: "row",
         gap: space.md,
         padding: space.md,
-        backgroundColor: selected ? p.surfaceMuted : pressed ? p.surfaceMuted : p.surface,
+        backgroundColor: selected || pressed ? p.surfaceMuted : p.surface,
         borderBottomWidth: 1,
         borderBottomColor: p.border,
       })}
     >
       {selected ? (
-        <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, backgroundColor: p.ink }} />
+        <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, backgroundColor: p.accent }} />
       ) : null}
       <PostImage
         post={post}
@@ -174,13 +247,13 @@ export function PostListItem({
           width: 64,
           height: 64,
           borderRadius: radius.sm,
-          borderWidth: pending ? 1 : 0,
+          borderWidth: pending ? 1.5 : 0,
           borderStyle: "dashed",
-          borderColor: p.borderStrong,
+          borderColor: p.accent,
         }}
       />
       <View style={{ flex: 1, gap: 2, justifyContent: "center" }}>
-        <Text style={{ color: p.text, fontSize: 15, fontWeight: "700" }} numberOfLines={1}>
+        <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
           {placeLabel(post)}
         </Text>
         {post.text ? (
@@ -188,17 +261,13 @@ export function PostListItem({
             {post.text}
           </Text>
         ) : null}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-          {pending ? <SyncIcon status={post.syncStatus} size={12} /> : null}
-          <Text
-            numberOfLines={1}
-            style={{ color: pending ? p.text : p.textMuted, fontSize: 12, fontWeight: pending ? "600" : "400", flexShrink: 1 }}
-          >
-            {pending
-              ? syncLabel(post.syncStatus)
-              : `${tripLabel ? `${tripLabel} · ` : ""}${authorLabel(post, currentUserId)} · ${formatRelative(post.takenAt)}`}
+        {pending ? (
+          <PendingNote post={post} size={12} />
+        ) : (
+          <Text numberOfLines={1} style={{ color: p.textMuted, fontSize: 12 }}>
+            {`${tripLabel ? `${tripLabel} · ` : ""}${authorLabel(post, currentUserId)} · ${formatRelative(post.takenAt)}`}
           </Text>
-        </View>
+        )}
       </View>
     </Pressable>
   );
@@ -208,25 +277,50 @@ export function PostListItem({
 // Detaljevisning (egen skærm på mobil, højre side på stor skærm)
 // ---------------------------------------------------------------------------
 
-function InfoTile({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   const p = usePalette();
   return (
-    <View
-      style={{
-        flexGrow: 1,
-        flexBasis: 180,
-        borderWidth: 1,
-        borderColor: p.border,
-        borderRadius: radius.md,
-        borderCurve: "continuous",
-        padding: space.md,
-        gap: 2,
-      }}
-    >
-      <Text style={{ color: p.textMuted, fontSize: 11, letterSpacing: 0.8 }}>{label}</Text>
-      <Text selectable style={{ color: p.text, fontSize: 15 }}>
+    <View style={{ borderBottomWidth: 1, borderBottomColor: p.border, paddingBottom: 6, gap: 1 }}>
+      <Text style={[typo.eyebrow, { color: p.textMuted, fontSize: 10 }]}>{label}</Text>
+      <Text selectable style={{ color: p.text, fontSize: 14 }}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+/** Upload-status under postkortet, sagt i almindelige ord. */
+function SyncStatusRow({ post }: { post: LocalPost }) {
+  const p = usePalette();
+  const pending = isPending(post);
+  const message =
+    post.syncStatus === "lokal"
+      ? "Gemt på telefonen. Sendes til gruppen, når du har net."
+      : post.syncStatus === "uploader"
+        ? "Sendes til gruppen nu …"
+        : post.syncStatus === "fejl"
+          ? "Afsendelsen fejlede. Appen prøver igen af sig selv."
+          : post.pendingOp === "update"
+            ? "Rettelsen venter på at blive sendt."
+            : "Sendt til gruppen.";
+  const waiting = pending || !!post.pendingOp;
+  return (
+    <View
+      accessibilityRole="text"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space.sm + 2,
+        borderWidth: 1,
+        borderStyle: waiting ? "dashed" : "solid",
+        borderColor: waiting ? p.accent : p.border,
+        borderRadius: radius.sm,
+        paddingHorizontal: space.md,
+        paddingVertical: space.sm + 2,
+      }}
+    >
+      <SyncIcon status={waiting && !pending ? "lokal" : post.syncStatus} size={20} />
+      <Text style={{ flex: 1, color: p.text, fontSize: 14 }}>{message}</Text>
     </View>
   );
 }
@@ -255,53 +349,87 @@ export function PostDetail({
     : pending && coords
       ? "Hentes ved upload"
       : "Ikke tilgængeligt";
-  const country = post.countryCode
-    ? formatCountryFacts(post.countryCode, facts.data)
-    : "Ukendt";
+  const country = post.countryCode ? formatCountryFacts(post.countryCode, facts.data) : "Ukendt";
 
   return (
     <View style={{ gap: space.lg }}>
+      {/* Billedet som et aftryk med hvid kant */}
       <Pressable
         onPress={onImagePress}
         disabled={!onImagePress || !postImageSource(post)}
         accessibilityRole="imagebutton"
         accessibilityLabel="Vis billedet i fuld skærm"
+        style={{
+          backgroundColor: p.surface,
+          padding: 10,
+          paddingBottom: 30,
+          boxShadow: "0 2px 10px rgba(60, 40, 20, 0.14)",
+          transform: [{ rotate: "-1deg" }],
+          marginHorizontal: space.xs,
+        }}
       >
-        <PostImage
-          post={post}
-          size="full"
-          p={p}
-          style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: radius.lg, borderCurve: "continuous" }}
-        />
+        <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3 }} />
       </Pressable>
+
       <View style={{ gap: space.xs }}>
-        <Text selectable style={{ color: p.text, fontSize: 24, fontWeight: "700" }}>
+        <Text selectable accessibilityRole="header" style={[typo.title, { color: p.text, fontSize: 30, lineHeight: 36 }]}>
           {placeLabel(post)}
         </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs, flexWrap: "wrap" }}>
-          <Text style={{ color: p.textMuted, fontSize: 14 }}>
-            {authorLabel(post, currentUserId)} · {formatDateTimeLong(post.takenAt)}
-          </Text>
-          <SyncIcon status={post.syncStatus} />
-          <Text style={{ color: p.textMuted, fontSize: 14 }}>{syncLabel(post.syncStatus)}</Text>
-          {post.pendingOp === "update" ? (
-            <Text style={{ color: p.text, fontSize: 14, fontWeight: "600" }}>· rettelse venter på upload</Text>
+        <Text style={{ color: p.textMuted, fontSize: 14 }}>
+          {authorLabel(post, currentUserId)} · {formatDateTimeLong(post.takenAt)}
+        </Text>
+      </View>
+
+      {/* Postkortets bagside: teksten til venstre, stempel og "adresse" til højre */}
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: space.lg,
+          backgroundColor: p.paper,
+          borderWidth: 1,
+          borderColor: p.border,
+          borderRadius: radius.sm,
+          padding: space.lg,
+        }}
+      >
+        <View style={{ flexGrow: 1.25, flexBasis: 150 }}>
+          {post.text ? (
+            <Text selectable style={[typo.note, { color: p.text }]}>
+              {post.text}
+            </Text>
+          ) : (
+            <Text style={[typo.note, { color: p.textMuted }]}>Ingen tekst</Text>
+          )}
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: 130, gap: space.sm, borderLeftWidth: 1, borderLeftColor: p.border, paddingLeft: space.lg }}>
+          {post.countryCode ? (
+            <View style={{ alignItems: "flex-end" }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 56,
+                  borderWidth: 1.5,
+                  borderStyle: "dashed",
+                  borderColor: p.accent,
+                  borderRadius: 2,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 20 }}>{flagEmoji(post.countryCode)}</Text>
+                <Text style={[typo.eyebrow, { color: p.accentText, letterSpacing: 1 }]}>{post.countryCode.toUpperCase()}</Text>
+              </View>
+            </View>
           ) : null}
+          <InfoRow label="STED" value={place} />
+          <InfoRow label="VEJR" value={weather} />
+          <InfoRow label="LAND" value={country || countryName(post.countryCode)} />
         </View>
       </View>
-      {post.text ? (
-        <Text selectable style={{ color: p.text, fontSize: 17, lineHeight: 24 }}>
-          {post.text}
-        </Text>
-      ) : null}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.md }}>
-        <InfoTile label="STED (GPS)" value={place} />
-        <InfoTile label="VEJR (OPEN-METEO)" value={weather} />
-        <InfoTile
-          label="LAND (REST COUNTRIES)"
-          value={country || countryName(post.countryCode)}
-        />
-      </View>
+
+      <SyncStatusRow post={post} />
+
       {post.authorId === currentUserId ? <PostActions post={post} onDeleted={onDeleted} /> : null}
     </View>
   );

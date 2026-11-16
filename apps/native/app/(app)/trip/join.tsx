@@ -11,7 +11,7 @@ import { useLocalDb } from "@/lib/local-db/provider";
 import { useActiveTrip, useInvalidateLocal } from "@/lib/local-db/queries";
 import { upsertTripFromServer } from "@/lib/local-db/sync-repo";
 import { requestSync } from "@/lib/sync/sync-scheduler";
-import { space, usePalette } from "@/lib/theme";
+import { fonts, space, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 /**
@@ -82,7 +82,7 @@ export default function JoinTripScreen() {
           maxLength={INVITE_CODE_LENGTH + 2}
           returnKeyType="go"
           onSubmitEditing={join}
-          style={{ fontSize: 24, letterSpacing: 6, fontVariant: ["tabular-nums"], fontWeight: "600" }}
+          style={{ fontSize: 24, letterSpacing: 6, fontFamily: fonts.mono }}
         />
       </ScrollView>
 

@@ -8,16 +8,16 @@ import { EmptyState } from "@/components/empty-state";
 import { flagEmoji } from "@rejsedagbog/shared";
 
 import { authorLabel, PostDetail } from "@/components/post-views";
-import { TripHeader } from "@/components/trip-header";
+import { DayHeading, TripHeader } from "@/components/trip-header";
 import { galleryColumns, useBreakpoint } from "@/lib/breakpoints";
-import { formatDayHeading, formatDayShort, toIsoDate } from "@/lib/dates";
+import { dayHeading, formatDayShort, toIsoDate } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useSelectedPosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
 import { postImageSource, postImageUri, type LocalPost, type LocalTrip } from "@/lib/local-db/repo";
-import { radius, space, usePalette } from "@/lib/theme";
+import { radius, space, typo, usePalette } from "@/lib/theme";
 
-type Row = { type: "day"; key: string; title: string } | { type: "row"; key: string; posts: LocalPost[] };
+type Row = { type: "day"; key: string; title: string; subtitle?: string } | { type: "row"; key: string; posts: LocalPost[] };
 
 const GAP = 3;
 
@@ -58,7 +58,8 @@ function tripOptions(photos: LocalPost[], trips: LocalTrip[]): FilterOption[] {
 }
 
 /** Grupperer billeder pr. dag (wireframe 4) og deler dem op i rækker til et virtualiseret gitter. */
-function buildRows(posts: LocalPost[], columns: number): Row[] {
+function buildRows(posts: LocalPost[], columns: number, trips: LocalTrip[]): Row[] {
+  const tripsById = new Map(trips.map((t) => [t.id, t]));
   const byDay = new Map<string, LocalPost[]>();
   for (const post of posts) {
     const key = dayKey(post);
@@ -70,7 +71,8 @@ function buildRows(posts: LocalPost[], columns: number): Row[] {
   // Ældste dag først i galleriet, ligesom en fotobog.
   for (const [key, list] of [...byDay.entries()].reverse()) {
     const ordered = [...list].reverse();
-    rows.push({ type: "day", key: `d-${key}`, title: formatDayHeading(new Date(ordered[0]!.takenAt)) });
+    const first = ordered[0]!;
+    rows.push({ type: "day", key: `d-${key}`, ...dayHeading(new Date(first.takenAt), tripsById.get(first.tripId)) });
     for (let i = 0; i < ordered.length; i += columns) {
       rows.push({ type: "row", key: `r-${key}-${i}`, posts: ordered.slice(i, i + columns) });
     }
@@ -109,7 +111,7 @@ export default function GalleryScreen() {
   );
 
   const columns = galleryColumns(bp, width);
-  const rows = useMemo(() => buildRows(filtered, columns), [filtered, columns]);
+  const rows = useMemo(() => buildRows(filtered, columns, trips), [filtered, columns, trips]);
   const photoCount = filtered.length;
   const isFiltered = !!day || !!author || !!tripKey;
   const resetFilters = () => {
@@ -125,17 +127,13 @@ export default function GalleryScreen() {
       trip={trip}
       allTrips={showAll ? trips : null}
       pendingCount={pendingCount}
-      right={
-        <Text style={{ color: p.textMuted, fontSize: 15, fontVariant: ["tabular-nums"] }}>
-          {photoCount} {photoCount === 1 ? "billede" : "billeder"}
-        </Text>
-      }
+      meta={`${photoCount} ${photoCount === 1 ? "billede" : "billeder"}`}
     />
   );
 
   const filters =
     tripChoices.length > 1 || options.authors.length > 1 || options.days.length > 1 ? (
-      <View style={{ gap: space.sm, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: p.border }}>
+      <View style={{ gap: space.sm, paddingBottom: space.md, borderBottomWidth: 1, borderBottomColor: p.border }}>
         {tripChoices.length > 1 ? (
           <FilterRow
             label="Rejse"
@@ -187,7 +185,7 @@ export default function GalleryScreen() {
   } else if (rows.length === 0) {
     body = (
       <EmptyState icon="images-outline" title="Ingen billeder endnu" message={showAll ? "Billederne fra dine rejsers indlæg samles her." : "Billederne fra rejsens indlæg samles her."}>
-        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/new")} />
+        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} />
       </EmptyState>
     );
   } else {
@@ -196,12 +194,12 @@ export default function GalleryScreen() {
         {...refresh}
         data={rows}
         keyExtractor={(r) => r.key}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.xxl }}
         renderItem={({ item }) =>
           item.type === "day" ? (
-            <Text style={{ color: p.text, fontSize: 15, fontWeight: "600", paddingTop: space.lg, paddingBottom: space.sm }}>
-              {item.title}
-            </Text>
+            <View style={{ paddingBottom: space.sm }}>
+              <DayHeading title={item.title} subtitle={item.subtitle} />
+            </View>
           ) : (
             <View style={{ flexDirection: "row", gap: GAP, marginBottom: GAP }}>
               {item.posts.map((post) => (
@@ -267,7 +265,7 @@ function FilterRow({
       contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm, alignItems: "center" }}
       accessibilityLabel={`Filtrér på ${label.toLowerCase()}`}
     >
-      <Text style={{ color: p.textMuted, fontSize: 12, letterSpacing: 0.8, width: 56 }}>{label.toUpperCase()}</Text>
+      <Text style={[typo.eyebrow, { color: p.textMuted, width: 56 }]}>{label.toUpperCase()}</Text>
       {chips.map((chip) => {
         const selected = chip.key === value;
         return (
@@ -330,7 +328,7 @@ function GalleryCell({
             inset: 0,
             borderWidth: selected ? 3 : 1,
             borderStyle: selected ? "solid" : "dashed",
-            borderColor: selected ? p.accent : p.surface,
+            borderColor: selected ? p.accent : "#FFFFFF",
             backgroundColor: pending ? "rgba(0,0,0,0.35)" : "transparent",
             alignItems: "center",
             justifyContent: "center",

@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { formatRelative } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useTrips } from "@/lib/local-db/queries";
-import { radius, space, usePalette } from "@/lib/theme";
+import { radius, space, typo, usePalette } from "@/lib/theme";
 import { useTripMembers, type TripMember } from "@/lib/trip-members";
 
 /** Hvem der er med på rejsen (grupperejser). Ejeren kan herfra invitere flere. */
@@ -32,7 +32,7 @@ export default function MembersScreen() {
       refreshControl={<RefreshControl refreshing={members.isRefetching} onRefresh={() => void members.refetch()} />}
     >
       <View style={{ gap: space.xs }}>
-        <Text style={{ color: p.text, fontSize: 22, fontWeight: "700" }}>{trip.name}</Text>
+        <Text style={[typo.title, { color: p.text }]}>{trip.name}</Text>
         <Text style={{ color: p.textMuted, fontSize: 15 }}>
           {members.data
             ? list.length === 1

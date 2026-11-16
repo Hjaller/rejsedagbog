@@ -2,7 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 
 import { EmptyState } from "@/components/empty-state";
-import { placeLabel, PostDetail } from "@/components/post-views";
+import { PostDetail } from "@/components/post-views";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { usePost } from "@/lib/local-db/queries";
 import { space } from "@/lib/theme";
@@ -26,7 +26,8 @@ export default function PostDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: placeLabel(post.data) }} />
+      {/* Stedet står stort i postkortet, så headeren har kun tilbage-knappen. */}
+      <Stack.Screen options={{ title: "" }} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: space.lg, maxWidth: 760, width: "100%", alignSelf: "center" }}

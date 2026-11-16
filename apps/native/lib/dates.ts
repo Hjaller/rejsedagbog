@@ -30,6 +30,19 @@ export function toIsoDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * Hvilken dag på rejsen en dato er ("dag 5 af 15"), eller null uden for rejsens datoer.
+ * Regnes i kalenderdage, så sommertid ikke giver en dag for meget eller for lidt.
+ */
+export function tripDay(startIso: string, endIso: string, date: Date): { day: number; total: number } | null {
+  const dayIndex = (d: Date) => Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
+  const start = dayIndex(parseIsoDate(startIso));
+  const end = dayIndex(parseIsoDate(endIso));
+  const today = dayIndex(date);
+  if (today < start || today > end) return null;
+  return { day: today - start + 1, total: end - start + 1 };
+}
+
 export function formatTime(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -75,6 +88,19 @@ export function formatDateTimeLong(iso: string): string {
 export function formatDayHeading(date: Date): string {
   const wd = WEEKDAYS[date.getDay()]!;
   return `${wd[0]!.toUpperCase()}${wd.slice(1)} ${date.getDate()}. ${MONTHS[date.getMonth()]}`;
+}
+
+/**
+ * Overskrift for en dag i tidslinje og galleri: "Dag 5" + "tirsdag 14. april", når
+ * dagen ligger inden for rejsens datoer, ellers bare "Tirsdag 14. april".
+ */
+export function dayHeading(
+  date: Date,
+  trip?: { startDate: string; endDate: string } | null,
+): { title: string; subtitle?: string } {
+  const heading = formatDayHeading(date);
+  const day = trip ? tripDay(trip.startDate, trip.endDate, date) : null;
+  return day ? { title: `Dag ${day.day}`, subtitle: heading.charAt(0).toLowerCase() + heading.slice(1) } : { title: heading };
 }
 
 /** "12. maj" – filterknapper i galleriet */

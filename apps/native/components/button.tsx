@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, Text, type StyleProp, type ViewStyle } fr
 
 import { radius, space, usePalette } from "@/lib/theme";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "accent" | "secondary" | "ghost" | "danger";
 
 type ButtonProps = {
   label: string;
@@ -32,6 +32,7 @@ export function Button({
   const p = usePalette();
   const colors: Record<Variant, { bg: string; fg: string; border: string }> = {
     primary: { bg: p.ink, fg: p.onInk, border: p.ink },
+    accent: { bg: p.accent, fg: p.onAccent, border: p.accent },
     secondary: { bg: p.surface, fg: p.text, border: p.borderStrong },
     ghost: { bg: "transparent", fg: p.text, border: "transparent" },
     danger: { bg: "transparent", fg: p.danger, border: p.danger },

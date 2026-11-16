@@ -7,7 +7,7 @@ import type { LocalPost } from "@/lib/local-db/repo";
 import { space } from "@/lib/theme";
 
 /**
- * "Redigér tekst" og "Slet" på brugerens egne indlæg. Begge dele virker offline:
+ * "Redigér tekst", "Sæt sted" og "Slet" på brugerens egne indlæg. Alt virker offline:
  * ændringen gemmes lokalt og sendes af upload-køen.
  */
 export function PostActions({ post, onDeleted }: { post: LocalPost; onDeleted?: () => void }) {
@@ -44,6 +44,14 @@ export function PostActions({ post, onDeleted }: { post: LocalPost; onDeleted?: 
         icon="create-outline"
         variant="secondary"
         onPress={() => router.push({ pathname: "/post/edit/[id]", params: { id: post.id } })}
+        style={{ flexGrow: 1, flexBasis: 160 }}
+      />
+      <Button
+        label={post.lat != null ? "Ret sted" : "Sæt sted"}
+        icon="location-outline"
+        variant="secondary"
+        onPress={() => router.push({ pathname: "/post/place", params: { ids: post.id } })}
+        accessibilityHint="Vælg på et kort, hvor billedet er taget"
         style={{ flexGrow: 1, flexBasis: 160 }}
       />
       <Button

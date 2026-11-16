@@ -6,7 +6,7 @@ import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
 import { Button } from "@/components/button";
 import { TextField } from "@/components/text-field";
 import { authClient } from "@/lib/auth-client";
-import { space, usePalette } from "@/lib/theme";
+import { space, typo, usePalette } from "@/lib/theme";
 import { queryClient } from "@/utils/trpc";
 
 type Mode = "sign-in" | "sign-up";
@@ -61,12 +61,31 @@ export function AuthForm({ mode }: { mode: Mode }) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ width: "100%", maxWidth: 420, alignSelf: "center", gap: space.lg }}>
-          <View style={{ gap: space.xs, marginBottom: space.md }}>
-            <Text style={{ color: p.accent, fontSize: 13, letterSpacing: 2, fontWeight: "700" }}>REJSEPOST</Text>
-            <Text style={{ color: p.text, fontSize: 30, fontWeight: "700" }}>
+          <View style={{ gap: space.sm, marginBottom: space.md }}>
+            {/* Poststemplet er appens mærke (redesign D). */}
+            <View
+              accessible={false}
+              style={{
+                width: 88,
+                height: 88,
+                borderRadius: 44,
+                borderWidth: 2,
+                borderColor: p.accent,
+                alignItems: "center",
+                justifyContent: "center",
+                transform: [{ rotate: "-12deg" }],
+                marginBottom: space.md,
+              }}
+            >
+              <Text style={[typo.eyebrow, { color: p.accentText, fontSize: 10 }]}>REJSE</Text>
+              <Text style={[typo.heading, { color: p.accentText, lineHeight: 22 }]}>post</Text>
+              <Text style={[typo.eyebrow, { color: p.accentText, fontSize: 9 }]}>✶ ✶ ✶</Text>
+            </View>
+            <Text style={[typo.eyebrow, { color: p.textMuted }]}>REJSEPOST</Text>
+            <Text accessibilityRole="header" style={[typo.hero, { color: p.text, fontSize: 36, lineHeight: 42 }]}>
               {mode === "sign-up" ? "Opret konto" : "Log ind"}
             </Text>
-            <Text style={{ color: p.textMuted, fontSize: 16 }}>
+            <Text style={{ color: p.textMuted, fontSize: 16, lineHeight: 22 }}>
               {mode === "sign-up"
                 ? "Saml rejsens billeder, sted og vejr ét sted – også uden internet."
                 : "Velkommen tilbage. Dine indlæg venter på dig."}

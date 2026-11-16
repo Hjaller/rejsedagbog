@@ -11,7 +11,7 @@ import { formatDateTimeLong } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { ALL_TRIPS, useActiveTrip, usePost, usePosts } from "@/lib/local-db/queries";
 import { postImageSource, type LocalPost } from "@/lib/local-db/repo";
-import { space } from "@/lib/theme";
+import { space, typo } from "@/lib/theme";
 
 /**
  * Fuldskærmsvisning af rejsens billeder (Must: "tryk for at se et billede i fuld
@@ -138,12 +138,12 @@ export default function ViewerScreen() {
                 gap: 2,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>{placeLabel(current)}</Text>
+              <Text style={[typo.heading, { color: "#fff" }]}>{placeLabel(current)}</Text>
               <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13 }}>
                 {authorLabel(current, user.id)} · {formatDateTimeLong(current.takenAt)}
               </Text>
               {current.text ? (
-                <Text style={{ color: "#fff", fontSize: 15, marginTop: space.xs }} numberOfLines={3}>
+                <Text style={[typo.note, { color: "#fff", fontSize: 15, marginTop: space.xs }]} numberOfLines={3}>
                   {current.text}
                 </Text>
               ) : null}

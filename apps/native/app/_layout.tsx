@@ -1,4 +1,7 @@
+import { Fraunces_400Regular_Italic, Fraunces_600SemiBold } from "@expo-google-fonts/fraunces";
+import { IBMPlexMono_500Medium } from "@expo-google-fonts/ibm-plex-mono";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import * as SplashScreen from "expo-splash-screen";
@@ -33,12 +36,15 @@ export default function RootLayout() {
   // Sessionen caches i expo-secure-store af Better Auths Expo-klient, så auth-gaten virker offline.
   const { data: session, isPending } = authClient.useSession();
   const signedIn = !!session?.user;
+  // Overskrifternes fonte (redesign D). Fejler de, bruges telefonens skrift i stedet.
+  const [fontsLoaded, fontError] = useFonts({ Fraunces_600SemiBold, Fraunces_400Regular_Italic, IBMPlexMono_500Medium });
+  const ready = !isPending && (fontsLoaded || !!fontError);
 
   useEffect(() => {
-    if (!isPending) SplashScreen.hideAsync().catch(() => {});
-  }, [isPending]);
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
-  if (isPending) return null;
+  if (!ready) return null;
 
   return (
     <QueryClientProvider client={queryClient}>

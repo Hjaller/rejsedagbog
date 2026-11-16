@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps, ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { space, usePalette } from "@/lib/theme";
+import { space, typo, usePalette } from "@/lib/theme";
 
 export function EmptyState({
   icon,
@@ -26,8 +26,23 @@ export function EmptyState({
         gap: space.md,
       }}
     >
-      <Ionicons name={icon} size={40} color={p.textMuted} />
-      <Text style={{ color: p.text, fontSize: 18, fontWeight: "600", textAlign: "center" }}>{title}</Text>
+      <View
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: 36,
+          borderWidth: 1.5,
+          borderStyle: "dashed",
+          borderColor: p.borderStrong,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={32} color={p.textMuted} />
+      </View>
+      <Text accessibilityRole="header" style={[typo.heading, { color: p.text, fontSize: 22, lineHeight: 28, textAlign: "center" }]}>
+        {title}
+      </Text>
       {message ? (
         <Text style={{ color: p.textMuted, fontSize: 15, textAlign: "center", maxWidth: 360 }}>
           {message}

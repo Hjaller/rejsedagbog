@@ -1,11 +1,12 @@
-import { Stack } from "expo-router";
-import { useMemo } from "react";
+import { Stack, useRouter } from "expo-router";
+import { useEffect, useMemo } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import { LocalDbProvider, useLocalDb, type CurrentUser } from "@/lib/local-db/provider";
 import { useRefreshCountryFactsOnStart } from "@/lib/local-db/queries";
+import { recoverPendingPhoto, stashRecoveredPhoto } from "@/lib/media";
 import { useSyncScheduler } from "@/lib/sync/sync-scheduler";
-import { usePalette } from "@/lib/theme";
+import { fonts, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 export const unstable_settings = { initialRouteName: "(tabs)" };
@@ -16,7 +17,29 @@ function Bootstrap() {
   useSyncScheduler(db, user.id);
   // Landefakta (valuta, sprog) fra REST Countries via serveren, cachet i SQLite.
   useRefreshCountryFactsOnStart(() => trpcClient.enrich.countries.query());
+  useRecoverPendingPhoto();
   return null;
+}
+
+/**
+ * Lukkede Android appen, mens telefonens kamera var åbent, kommer billedet tilbage her,
+ * når appen starter igen, og gemmes som et nyt indlæg, så det ikke går tabt.
+ */
+function useRecoverPendingPhoto() {
+  const router = useRouter();
+  useEffect(() => {
+    let cancelled = false;
+    void recoverPendingPhoto().then((photo) => {
+      if (cancelled || !photo) return;
+      stashRecoveredPhoto(photo);
+      router.push({ pathname: "/post/new", params: { recovered: "1" } });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Kun ved opstart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 export default function AppLayout() {
@@ -36,16 +59,52 @@ export default function AppLayout() {
       <Bootstrap />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: p.surface },
+          headerStyle: { backgroundColor: p.background },
           headerTintColor: p.text,
+          headerTitleStyle: { fontFamily: fonts.display, fontSize: 19 },
           headerShadowVisible: false,
           contentStyle: { backgroundColor: p.background },
           headerBackButtonDisplayMode: "minimal",
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="post/new" options={{ presentation: "modal", title: "Nyt indlæg" }} />
+        {/* "+": vælg mellem kameraet og albummet. */}
+        <Stack.Screen
+          name="post/add"
+          options={{
+            presentation: "formSheet",
+            headerShown: false,
+            title: "Nyt indlæg",
+            sheetAllowedDetents: "fitToContents",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            contentStyle: { backgroundColor: p.surface },
+          }}
+        />
+        {/* Åbner telefonens kamera eller album med det samme, så skærmen har ingen header (redesign D1/D2). */}
+        <Stack.Screen
+          name="post/new"
+          options={{ presentation: "fullScreenModal", headerShown: false, animation: "fade", title: "Nyt indlæg" }}
+        />
+        <Stack.Screen
+          name="trip/switch"
+          options={{
+            presentation: "formSheet",
+            headerShown: false,
+            title: "Vis rejse",
+            sheetAllowedDetents: "fitToContents",
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            contentStyle: { backgroundColor: p.surface },
+          }}
+        />
+        {/* Fuld skærm, så det at flytte kortet ikke lukker et ark. */}
+        <Stack.Screen
+          name="post/place"
+          options={{ presentation: "fullScreenModal", headerShown: false, title: "Sæt sted" }}
+        />
         <Stack.Screen name="post/[id]" options={{ title: "" }} />
+        <Stack.Screen name="profile" options={{ title: "Profil" }} />
         <Stack.Screen name="post/edit/[id]" options={{ presentation: "modal", title: "Redigér indlæg" }} />
         <Stack.Screen name="trip/new" options={{ presentation: "modal", title: "Ny rejse" }} />
         <Stack.Screen name="trip/join" options={{ presentation: "modal", title: "Tilslut rejse" }} />

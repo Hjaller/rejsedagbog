@@ -1,41 +1,52 @@
+import type { TextStyle } from "react-native";
 import { useColorScheme } from "react-native";
 
 /**
- * Rejsepost-paletten. Papir-agtige flader og blæk-sort til primære handlinger
- * (som i wireframes) med en poststempel-rød accent til status og aktiv navigation.
+ * Rejsepost-paletten (redesign D, "postkort"): papirflade, blæk-sort til primære
+ * handlinger og poststempel-rød til "+", stempler og det, der venter på upload.
  */
 const light = {
-  background: "#FBFAF7",
+  background: "#F6F1E7",
+  /** Kort og ark. */
   surface: "#FFFFFF",
-  surfaceMuted: "#F2F0EA",
-  border: "#E3E0D8",
-  borderStrong: "#C9C5BA",
+  /** Bundbar og sidebar: en anelse varmere end kortene. */
+  paper: "#FFFDF8",
+  surfaceMuted: "#EFE9DC",
+  border: "#E4DDCE",
+  borderStrong: "#C9C1B0",
   text: "#1C1B19",
   textMuted: "#6B675F",
   ink: "#1C1B19",
   onInk: "#FFFFFF",
+  /** Poststempel-rød som flade (fx "+"-knappen). */
   accent: "#B9472A",
+  onAccent: "#FFFFFF",
+  /** Rød til tekst og tynde streger på papiret (kontrast ≥ 4,5:1). */
+  accentText: "#8A3A22",
   success: "#2F7D4F",
   warning: "#A86B12",
   danger: "#B3261E",
-  placeholder: "#E9E6DF",
+  placeholder: "#E9E2D3",
 };
 
 const dark: typeof light = {
-  background: "#151412",
-  surface: "#1E1D1A",
-  surfaceMuted: "#2A2825",
-  border: "#34322E",
-  borderStrong: "#4A4740",
-  text: "#F3F1EC",
-  textMuted: "#A29D93",
-  ink: "#F3F1EC",
-  onInk: "#151412",
+  background: "#161412",
+  surface: "#201E1B",
+  paper: "#1B1917",
+  surfaceMuted: "#2C2925",
+  border: "#38342E",
+  borderStrong: "#4E4941",
+  text: "#F3EEE4",
+  textMuted: "#A8A196",
+  ink: "#F3EEE4",
+  onInk: "#161412",
   accent: "#E07A5F",
+  onAccent: "#161412",
+  accentText: "#EE9A82",
   success: "#6FBF8E",
   warning: "#E0A84F",
   danger: "#F2827A",
-  placeholder: "#2A2825",
+  placeholder: "#2C2925",
 };
 
 export type Palette = typeof light;
@@ -44,7 +55,32 @@ export function usePalette(): Palette {
   return useColorScheme() === "dark" ? dark : light;
 }
 
-export const radius = { sm: 8, md: 12, lg: 16, pill: 999 } as const;
+export const radius = { sm: 6, md: 10, lg: 14, xl: 24, pill: 999 } as const;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+
+/**
+ * Fonte, der hentes i app/_layout.tsx. Overskrifter er Fraunces (serif), små
+ * versal-etiketter er IBM Plex Mono; brødtekst bruger telefonens egen skrift.
+ * Med egne fonte vælges vægten med navnet, ikke med fontWeight (Android).
+ */
+export const fonts = {
+  display: "Fraunces_600SemiBold",
+  displayItalic: "Fraunces_400Regular_Italic",
+  mono: "IBMPlexMono_500Medium",
+} as const;
+
+/** Typografi til overskrifter og etiketter. Brug sammen med en farve fra paletten. */
+export const typo = {
+  /** "REJSEPOST", "STED" – små versaler over en overskrift eller et felt. */
+  eyebrow: { fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1.8 },
+  /** Skærmens titel, fx rejsens navn. */
+  hero: { fontFamily: fonts.display, fontSize: 32, letterSpacing: -0.5, lineHeight: 38 },
+  /** Titel i et indlæg eller et ark. */
+  title: { fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.3, lineHeight: 30 },
+  /** Dag-overskrift, kort-titel. */
+  heading: { fontFamily: fonts.display, fontSize: 20, lineHeight: 26 },
+  /** Indlæggets tekst, skrevet som på et postkort. */
+  note: { fontFamily: fonts.displayItalic, fontSize: 16, lineHeight: 23 },
+} as const satisfies Record<string, TextStyle>;
 
 export const NAV_THEME = { light, dark };

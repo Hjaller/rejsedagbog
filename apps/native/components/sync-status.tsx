@@ -5,10 +5,10 @@ import { Text, View } from "react-native";
 import { radius, space, usePalette } from "@/lib/theme";
 
 const LABELS: Record<SyncStatus, string> = {
-  lokal: "gemt lokalt · venter på upload",
-  uploader: "uploader …",
-  synkroniseret: "uploadet",
-  fejl: "upload fejlede · prøver igen",
+  lokal: "gemt på telefonen",
+  uploader: "sendes …",
+  synkroniseret: "sendt",
+  fejl: "fejlede · prøver igen",
 };
 
 const ICONS: Record<SyncStatus, "cloud-offline-outline" | "cloud-upload-outline" | "cloud-done-outline" | "alert-circle-outline"> = {
@@ -37,7 +37,7 @@ export function SyncIcon({ status, size = 14 }: { status: SyncStatus; size?: num
   );
 }
 
-/** "● 1 venter på upload" i headeren. Skjules, når alt er uploadet. */
+/** "● 1 venter" i headeren (stiplet som et ikke-afsendt postkort). Skjules, når alt er uploadet. */
 export function PendingPill({ count }: { count: number }) {
   const p = usePalette();
   if (count <= 0) return null;
@@ -50,16 +50,15 @@ export function PendingPill({ count }: { count: number }) {
         alignItems: "center",
         gap: space.xs + 2,
         borderWidth: 1,
-        borderColor: p.borderStrong,
+        borderStyle: "dashed",
+        borderColor: p.accent,
         borderRadius: radius.pill,
         paddingHorizontal: space.md,
-        paddingVertical: space.xs + 1,
+        paddingVertical: space.xs,
       }}
     >
       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: p.accent }} />
-      <Text style={{ color: p.text, fontSize: 13, fontVariant: ["tabular-nums"] }}>
-        {count} venter på upload
-      </Text>
+      <Text style={{ color: p.text, fontSize: 13, fontVariant: ["tabular-nums"] }}>{count} venter</Text>
     </View>
   );
 }

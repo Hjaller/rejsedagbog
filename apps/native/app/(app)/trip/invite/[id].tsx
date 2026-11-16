@@ -6,7 +6,7 @@ import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { apiErrorMessage } from "@/lib/api-errors";
 import { useSetTripInviteCode, useTrips } from "@/lib/local-db/queries";
-import { radius, space, usePalette } from "@/lib/theme";
+import { fonts, radius, space, typo, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 const OFFLINE = "Ingen forbindelse. Invitationer kræver internet.";
@@ -97,7 +97,7 @@ export default function InviteScreen() {
       contentContainerStyle={{ padding: space.lg, gap: space.lg, maxWidth: 560, width: "100%", alignSelf: "center" }}
     >
       <View style={{ gap: space.xs }}>
-        <Text style={{ color: p.text, fontSize: 22, fontWeight: "700" }}>{trip.name}</Text>
+        <Text style={[typo.title, { color: p.text }]}>{trip.name}</Text>
         <Text style={{ color: p.textMuted, fontSize: 15 }}>
           {trip.memberCount === 1 ? "Kun dig indtil videre" : `${trip.memberCount} i gruppen`}
         </Text>
@@ -117,11 +117,11 @@ export default function InviteScreen() {
               backgroundColor: p.surface,
             }}
           >
-            <Text style={{ color: p.textMuted, fontSize: 12, letterSpacing: 1.2 }}>INVITATIONSKODE</Text>
+            <Text style={[typo.eyebrow, { color: p.textMuted }]}>INVITATIONSKODE</Text>
             <Text
               selectable
               accessibilityLabel={`Invitationskode ${trip.inviteCode.split("").join(" ")}`}
-              style={{ color: p.text, fontSize: 40, fontWeight: "700", letterSpacing: 8, fontVariant: ["tabular-nums"] }}
+              style={{ color: p.text, fontFamily: fonts.mono, fontSize: 38, letterSpacing: 6 }}
             >
               {trip.inviteCode}
             </Text>

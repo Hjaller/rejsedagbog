@@ -1,16 +1,39 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, ScrollView, View } from "react-native";
 
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { PostCard, PostDetail, PostListItem } from "@/components/post-views";
-import { TripHeader, useTripLabel } from "@/components/trip-header";
+import { DayHeading, TripHeader, useTripLabel } from "@/components/trip-header";
 import { useBreakpoint } from "@/lib/breakpoints";
+import { dayHeading, toIsoDate } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useSelectedPosts } from "@/lib/local-db/queries";
+import type { LocalPost, LocalTrip } from "@/lib/local-db/repo";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
 import { space, usePalette } from "@/lib/theme";
+
+type Row =
+  | { type: "day"; key: string; title: string; subtitle?: string }
+  | { type: "post"; key: string; post: LocalPost };
+
+/** Indlæggene (nyeste først) delt op i rejsedage: "Dag 5 · tirsdag 14. april". */
+function buildRows(posts: LocalPost[], trips: LocalTrip[]): Row[] {
+  const tripsById = new Map(trips.map((t) => [t.id, t]));
+  const rows: Row[] = [];
+  let current = "";
+  for (const post of posts) {
+    const date = new Date(post.takenAt);
+    const key = `${post.tripId}-${toIsoDate(date)}`;
+    if (key !== current) {
+      current = key;
+      rows.push({ type: "day", key: `d-${key}`, ...dayHeading(date, tripsById.get(post.tripId)) });
+    }
+    rows.push({ type: "post", key: post.id, post });
+  }
+  return rows;
+}
 
 export default function TimelineScreen() {
   const p = usePalette();
@@ -21,6 +44,8 @@ export default function TimelineScreen() {
   const tripLabel = useTripLabel(trips, showAll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const refresh = useRefreshSync();
+  const list = posts.data ?? [];
+  const rows = useMemo(() => buildRows(list, trips), [list, trips]);
 
   const header = (
     <TripHeader eyebrow="REJSEPOST" trip={trip} allTrips={showAll ? trips : null} pendingCount={pendingCount} />
@@ -50,8 +75,6 @@ export default function TimelineScreen() {
     );
   }
 
-  const list = posts.data ?? [];
-
   if (posts.error) {
     return (
       <View style={{ flex: 1 }}>
@@ -72,11 +95,11 @@ export default function TimelineScreen() {
           title="Ingen indlæg endnu"
           message={
             showAll
-              ? "Ingen af dine rejser har indlæg endnu. Tag et billede – sted, vejr og land bliver tilføjet automatisk."
-              : "Tag et billede – sted, vejr og land bliver tilføjet automatisk."
+              ? "Ingen af dine rejser har indlæg endnu. Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
+              : "Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
           }
         >
-          <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/new")} />
+          <Button label="Tilføj det første billede" icon="add" variant="accent" onPress={() => router.push("/post/add")} />
         </EmptyState>
       </View>
     );
@@ -87,26 +110,32 @@ export default function TimelineScreen() {
     const selected = list.find((x) => x.id === selectedId) ?? list[0]!;
     return (
       <View style={{ flex: 1, flexDirection: "row" }}>
-        <View style={{ width: 360, borderRightWidth: 1, borderRightColor: p.border, backgroundColor: p.surface }}>
+        <View style={{ width: 380, borderRightWidth: 1, borderRightColor: p.border, backgroundColor: p.surface }}>
           {header}
           <FlatList
             {...refresh}
-            data={list}
-            keyExtractor={(x) => x.id}
-            renderItem={({ item }) => (
-              <PostListItem
-                post={item}
-                currentUserId={user.id}
-                selected={item.id === selected.id}
-                tripLabel={tripLabel(item)}
-                onPress={() => setSelectedId(item.id)}
-              />
-            )}
+            data={rows}
+            keyExtractor={(r) => r.key}
+            renderItem={({ item }) =>
+              item.type === "day" ? (
+                <View style={{ paddingHorizontal: space.lg, backgroundColor: p.surface }}>
+                  <DayHeading title={item.title} subtitle={item.subtitle} />
+                </View>
+              ) : (
+                <PostListItem
+                  post={item.post}
+                  currentUserId={user.id}
+                  selected={item.post.id === selected.id}
+                  tripLabel={tripLabel(item.post)}
+                  onPress={() => setSelectedId(item.post.id)}
+                />
+              )
+            }
           />
         </View>
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: space.xl, maxWidth: 900, width: "100%", alignSelf: "center" }}
+          contentContainerStyle={{ padding: space.xxl, maxWidth: 820, width: "100%", alignSelf: "center" }}
           contentInsetAdjustmentBehavior="automatic"
         >
           <PostDetail
@@ -120,30 +149,34 @@ export default function TimelineScreen() {
     );
   }
 
-  // Mobil og tablet: én kolonne med kort.
+  // Mobil og tablet: én kolonne med postkort, delt op i dage.
   return (
     <View style={{ flex: 1 }}>
       {header}
       <FlatList
         {...refresh}
-        data={list}
-        keyExtractor={(x) => x.id}
+        data={rows}
+        keyExtractor={(r) => r.key}
         contentContainerStyle={{
-          padding: space.lg,
-          gap: space.lg,
-          paddingBottom: 100, // plads til "+"-knappen
+          paddingHorizontal: space.lg,
+          paddingBottom: space.xxl,
+          gap: space.md,
           maxWidth: 640,
           width: "100%",
           alignSelf: "center",
         }}
-        renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            currentUserId={user.id}
-            tripLabel={tripLabel(item)}
-            onPress={() => router.push(`/post/${item.id}`)}
-          />
-        )}
+        renderItem={({ item }) =>
+          item.type === "day" ? (
+            <DayHeading title={item.title} subtitle={item.subtitle} />
+          ) : (
+            <PostCard
+              post={item.post}
+              currentUserId={user.id}
+              tripLabel={tripLabel(item.post)}
+              onPress={() => router.push(`/post/${item.post.id}`)}
+            />
+          )
+        }
       />
     </View>
   );

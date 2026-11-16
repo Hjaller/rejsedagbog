@@ -36,13 +36,7 @@ export default function MapScreen() {
       trip={trip}
       allTrips={showAll ? trips : null}
       pendingCount={pendingCount}
-      right={
-        positioned.length > 0 ? (
-          <Text style={{ color: p.textMuted, fontSize: 15, fontVariant: ["tabular-nums"] }}>
-            {positioned.length} {positioned.length === 1 ? "sted" : "steder"}
-          </Text>
-        ) : null
-      }
+      meta={positioned.length > 0 ? `${positioned.length} ${positioned.length === 1 ? "sted" : "steder"}` : undefined}
     />
   );
 
@@ -66,7 +60,7 @@ export default function MapScreen() {
             : "Indlæg med GPS-position bliver vist her."
         }
       >
-        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/new")} />
+        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} />
       </EmptyState>
     );
   } else {
@@ -85,10 +79,12 @@ export default function MapScreen() {
               paddingVertical: space.xs,
               borderRadius: radius.pill,
               backgroundColor: p.surface,
-              opacity: 0.92,
+              borderWidth: 1,
+              borderColor: p.border,
+              opacity: 0.95,
             }}
           >
-            <Text style={{ color: p.textMuted, fontSize: 12 }}>
+            <Text style={{ color: p.text, fontSize: 12 }}>
               {withoutPosition} indlæg uden position vises ikke
             </Text>
           </View>
@@ -100,12 +96,12 @@ export default function MapScreen() {
               left: space.md,
               right: space.md,
               bottom: space.md + 16,
-              borderRadius: radius.lg,
+              borderRadius: radius.md,
               borderCurve: "continuous",
               overflow: "hidden",
               borderWidth: 1,
               borderColor: p.border,
-              boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+              boxShadow: "0 4px 16px rgba(40,25,10,0.22)",
               maxWidth: 560,
               alignSelf: "center",
             }}
@@ -139,7 +135,7 @@ export default function MapScreen() {
         {body}
       </View>
       {bp === "expanded" && view ? (
-        <View style={{ width: 420, borderLeftWidth: 1, borderLeftColor: p.border, backgroundColor: p.background }}>
+        <View style={{ width: 440, borderLeftWidth: 1, borderLeftColor: p.border, backgroundColor: p.background }}>
           {selected ? (
             <ScrollView contentContainerStyle={{ padding: space.xl }} contentInsetAdjustmentBehavior="automatic">
               <PostDetail
