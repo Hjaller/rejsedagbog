@@ -5,14 +5,16 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "
 
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
+import { flagEmoji } from "@rejsedagbog/shared";
+
 import { authorLabel, PostDetail } from "@/components/post-views";
 import { TripHeader } from "@/components/trip-header";
 import { galleryColumns, useBreakpoint } from "@/lib/breakpoints";
 import { formatDayHeading, formatDayShort, toIsoDate } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
-import { useActiveTrip, usePendingCount, usePosts } from "@/lib/local-db/queries";
+import { useSelectedPosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
-import { postImageSource, postImageUri, type LocalPost } from "@/lib/local-db/repo";
+import { postImageSource, postImageUri, type LocalPost, type LocalTrip } from "@/lib/local-db/repo";
 import { radius, space, usePalette } from "@/lib/theme";
 
 type Row = { type: "day"; key: string; title: string } | { type: "row"; key: string; posts: LocalPost[] };
@@ -47,6 +49,14 @@ function filterOptions(photos: LocalPost[], currentUserId: string) {
   };
 }
 
+/** Rejserne med billeder, i samme rækkefølge som i Rejser-fanen (nyeste først). */
+function tripOptions(photos: LocalPost[], trips: LocalTrip[]): FilterOption[] {
+  const withPhotos = new Set(photos.map((post) => post.tripId));
+  return trips
+    .filter((t) => withPhotos.has(t.id))
+    .map((t) => ({ key: t.id, label: `${flagEmoji(t.countryCode)} ${t.name}` }));
+}
+
 /** Grupperer billeder pr. dag (wireframe 4) og deler dem op i rækker til et virtualiseret gitter. */
 function buildRows(posts: LocalPost[], columns: number): Row[] {
   const byDay = new Map<string, LocalPost[]>();
@@ -73,16 +83,22 @@ export default function GalleryScreen() {
   const router = useRouter();
   const bp = useBreakpoint();
   const { user } = useLocalDb();
-  const { trip, isLoading } = useActiveTrip();
-  const posts = usePosts(trip?.id);
-  const pending = usePendingCount(trip?.id);
+  const { trip, trips, showAll, scope, posts, pendingCount, isLoading } = useSelectedPosts();
   const [width, setWidth] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dayFilter, setDayFilter] = useState<string | null>(null);
   const [authorFilter, setAuthorFilter] = useState<string | null>(null);
+  const [tripFilter, setTripFilter] = useState<string | null>(null);
   const refresh = useRefreshSync();
 
-  const photos = useMemo(() => (posts.data ?? []).filter((post) => !!postImageUri(post, "thumb")), [posts.data]);
+  const allPhotos = useMemo(() => (posts.data ?? []).filter((post) => !!postImageUri(post, "thumb")), [posts.data]);
+  // Med "Alle rejser" kan der filtreres på rejse; dage og personer følger den valgte rejse.
+  const tripChoices = useMemo(() => (showAll ? tripOptions(allPhotos, trips) : []), [showAll, allPhotos, trips]);
+  const tripKey = tripChoices.some((t) => t.key === tripFilter) ? tripFilter : null;
+  const photos = useMemo(
+    () => (tripKey ? allPhotos.filter((post) => post.tripId === tripKey) : allPhotos),
+    [allPhotos, tripKey],
+  );
   const options = useMemo(() => filterOptions(photos, user.id), [photos, user.id]);
   // Et valg, der ikke længere findes (andet rejse, slettet billede), tæller som "alle".
   const day = options.days.some((d) => d.key === dayFilter) ? dayFilter : null;
@@ -95,10 +111,11 @@ export default function GalleryScreen() {
   const columns = galleryColumns(bp, width);
   const rows = useMemo(() => buildRows(filtered, columns), [filtered, columns]);
   const photoCount = filtered.length;
-  const isFiltered = !!day || !!author;
+  const isFiltered = !!day || !!author || !!tripKey;
   const resetFilters = () => {
     setDayFilter(null);
     setAuthorFilter(null);
+    setTripFilter(null);
   };
   const cell = width > 0 ? (width - space.lg * 2 - GAP * (columns - 1)) / columns : 0;
 
@@ -106,7 +123,8 @@ export default function GalleryScreen() {
     <TripHeader
       eyebrow="GALLERI"
       trip={trip}
-      pendingCount={pending.data ?? 0}
+      allTrips={showAll ? trips : null}
+      pendingCount={pendingCount}
       right={
         <Text style={{ color: p.textMuted, fontSize: 15, fontVariant: ["tabular-nums"] }}>
           {photoCount} {photoCount === 1 ? "billede" : "billeder"}
@@ -116,8 +134,21 @@ export default function GalleryScreen() {
   );
 
   const filters =
-    options.authors.length > 1 || options.days.length > 1 ? (
+    tripChoices.length > 1 || options.authors.length > 1 || options.days.length > 1 ? (
       <View style={{ gap: space.sm, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: p.border }}>
+        {tripChoices.length > 1 ? (
+          <FilterRow
+            label="Rejse"
+            allLabel="Alle"
+            options={tripChoices}
+            value={tripKey}
+            onChange={(key) => {
+              setTripFilter(key);
+              // Dagene hører til rejsen, så et dagvalg fra en anden rejse giver ikke mening.
+              setDayFilter(null);
+            }}
+          />
+        ) : null}
         {options.authors.length > 1 ? (
           <FilterRow
             label="Person"
@@ -141,7 +172,7 @@ export default function GalleryScreen() {
   let body;
   if (isLoading || posts.isLoading) {
     body = <ActivityIndicator style={{ marginTop: space.xxl }} />;
-  } else if (!trip) {
+  } else if (!scope) {
     body = (
       <EmptyState icon="images-outline" title="Ingen rejse valgt">
         <Button label="Ny rejse" icon="add" onPress={() => router.push("/trip/new")} />
@@ -155,7 +186,7 @@ export default function GalleryScreen() {
     );
   } else if (rows.length === 0) {
     body = (
-      <EmptyState icon="images-outline" title="Ingen billeder endnu" message="Billederne fra rejsens indlæg samles her.">
+      <EmptyState icon="images-outline" title="Ingen billeder endnu" message={showAll ? "Billederne fra dine rejsers indlæg samles her." : "Billederne fra rejsens indlæg samles her."}>
         <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/new")} />
       </EmptyState>
     );

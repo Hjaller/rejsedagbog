@@ -50,6 +50,7 @@ export default function AppLayout() {
         <Stack.Screen name="trip/new" options={{ presentation: "modal", title: "Ny rejse" }} />
         <Stack.Screen name="trip/join" options={{ presentation: "modal", title: "Tilslut rejse" }} />
         <Stack.Screen name="trip/invite/[id]" options={{ presentation: "modal", title: "Invitér" }} />
+        <Stack.Screen name="trip/members/[id]" options={{ presentation: "modal", title: "Gruppen" }} />
         <Stack.Screen
           name="viewer/[postId]"
           options={{ presentation: "fullScreenModal", headerShown: false, animation: "fade" }}

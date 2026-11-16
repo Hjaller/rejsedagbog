@@ -67,7 +67,8 @@
           "isIosBackgroundLocationEnabled": false
         }
       ],
-      "./plugins/with-short-cmake-paths.js"
+      "./plugins/with-short-cmake-paths.js",
+      "@maplibre/maplibre-react-native"
     ],
     "experiments": {
       "typedRoutes": true,

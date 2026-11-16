@@ -61,6 +61,7 @@ describe("adgangskontrol mellem to brugere", () => {
 
   it.each([
     ["trips.get", "query", { tripId: trip.id }],
+    ["trips.members", "query", { tripId: trip.id }],
     ["posts.list", "query", { tripId: trip.id }],
     ["posts.get", "query", { tripId: trip.id, postId }],
     ["trips.update", "mutation", { ...trip, id: undefined, tripId: trip.id, name: "Hacket" }],

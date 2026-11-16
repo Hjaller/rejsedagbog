@@ -104,6 +104,14 @@ export async function setTripInviteCode(db: LocalDb, tripId: string, code: strin
   await db.runAsync("UPDATE trips SET inviteCode = ? WHERE id = ?", code, tripId);
 }
 
+/** Antal i gruppen fra serveren, så "N i gruppen" passer, når medlemslisten er hentet. */
+export async function setTripMemberCount(db: LocalDb, tripId: string, count: number): Promise<boolean> {
+  const row = await db.getFirstAsync<{ memberCount: number }>("SELECT memberCount FROM trips WHERE id = ?", tripId);
+  if (!row || row.memberCount === count) return false;
+  await db.runAsync("UPDATE trips SET memberCount = ? WHERE id = ?", count, tripId);
+  return true;
+}
+
 export async function insertTrip(
   db: LocalDb,
   trip: Pick<LocalTrip, "id" | "name" | "countryCode" | "startDate" | "endDate">,
@@ -126,11 +134,14 @@ export async function insertTrip(
 // Indlæg
 // ---------------------------------------------------------------------------
 
-export async function listPosts(db: LocalDb, tripId: string): Promise<LocalPost[]> {
-  const rows = await db.getAllAsync<PostRow>(
-    "SELECT * FROM posts WHERE tripId = ? AND deletedAt IS NULL ORDER BY takenAt DESC",
-    tripId,
-  );
+/** Indlæggene på én rejse, eller på alle brugerens rejser, når `tripId` er null. */
+export async function listPosts(db: LocalDb, tripId: string | null): Promise<LocalPost[]> {
+  const rows = tripId
+    ? await db.getAllAsync<PostRow>(
+        "SELECT * FROM posts WHERE tripId = ? AND deletedAt IS NULL ORDER BY takenAt DESC",
+        tripId,
+      )
+    : await db.getAllAsync<PostRow>("SELECT * FROM posts WHERE deletedAt IS NULL ORDER BY takenAt DESC");
   return rows.map(toPost);
 }
 

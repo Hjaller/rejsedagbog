@@ -49,7 +49,7 @@ export default function NewPostScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useLocalDb();
-  const { trip: activeTrip, trips, setActiveTrip, isLoading } = useActiveTrip();
+  const { trip: activeTrip, defaultTrip, showAll, trips, setActiveTrip, isLoading } = useActiveTrip();
   const createPost = useCreatePost();
   const network = useNetworkState();
   const online = network.isConnected !== false && network.isInternetReachable !== false;
@@ -66,7 +66,8 @@ export default function NewPostScreen() {
   const capture = useRef<{ seq: number; pending: Promise<Coords | null> | null }>({ seq: 0, pending: null });
   const [locating, setLocating] = useState(false);
 
-  const trip = trips.find((t) => t.id === tripId) ?? activeTrip;
+  // Med "Alle rejser" valgt forvælges rejsen, der er i gang (ellers den nyeste).
+  const trip = trips.find((t) => t.id === tripId) ?? defaultTrip;
 
   // GPS ("mens appen bruges") hentes, når skærmen åbnes – dvs. når funktionen bruges.
   // Det er kun et estimat til forhåndsvisningen; positionen for billedet måles, når det tages.
@@ -174,7 +175,8 @@ export default function NewPostScreen() {
         countryCode: previewMatches ? countryCode : (trip.countryCode ?? null),
         localImageUri,
       });
-      if (trip.id !== activeTrip?.id) await setActiveTrip(trip.id);
+      // Vis rejsen, indlægget kom på – medmindre alle rejser vises, så er det der allerede.
+      if (!showAll && trip.id !== activeTrip?.id) await setActiveTrip(trip.id);
       router.back();
     } catch (e) {
       console.error("[post/new] kunne ikke gemme", e);

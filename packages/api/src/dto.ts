@@ -19,6 +19,14 @@ export type TripDto = {
   updatedAt: string;
 };
 
+/** Et medlem af en rejse. Uden e-mail: de andre i gruppen skal kun se navnet. */
+export type TripMemberDto = {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+  joinedAt: string;
+};
+
 export type MediaDto = {
   id: string;
   kind: string;

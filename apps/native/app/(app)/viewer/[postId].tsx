@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { authorLabel, placeLabel } from "@/components/post-views";
 import { formatDateTimeLong } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
-import { usePost, usePosts } from "@/lib/local-db/queries";
+import { ALL_TRIPS, useActiveTrip, usePost, usePosts } from "@/lib/local-db/queries";
 import { postImageSource, type LocalPost } from "@/lib/local-db/repo";
 import { space } from "@/lib/theme";
 
@@ -24,7 +24,9 @@ export default function ViewerScreen() {
   const { width, height } = useWindowDimensions();
   const { user } = useLocalDb();
   const start = usePost(postId);
-  const posts = usePosts(start.data?.tripId);
+  // Med "Alle rejser" valgt swipes der gennem alle billeder, ligesom i galleriet.
+  const { showAll } = useActiveTrip();
+  const posts = usePosts(showAll ? ALL_TRIPS : start.data?.tripId);
   const listRef = useRef<FlatList<LocalPost>>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
 

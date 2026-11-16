@@ -76,6 +76,24 @@ describe("invitationskoder", () => {
     expect(list.ok && list.data.map((x) => x.inviteCode)).toEqual([null]);
   });
 
+  it("medlemmerne kan se hvem der er med, uden e-mails, og ejeren står først", async () => {
+    for (const user of [sara, jonas]) {
+      const res = await query<Record<string, unknown>[]>(t.app, "trips.members", { tripId: trip.id }, user);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.data.map((m) => [m.name, m.role])).toEqual([
+        ["Sara", "owner"],
+        ["Jonas", "member"],
+      ]);
+      expect(Object.keys(res.data[0]!).sort()).toEqual(["id", "joinedAt", "name", "role"]);
+      expect(JSON.stringify(res.data)).not.toContain("@");
+    }
+
+    const stranger = await query(t.app, "trips.members", { tripId: trip.id }, mia);
+    expect(stranger.ok).toBe(false);
+    if (!stranger.ok) expect(stranger.code).toBe("NOT_FOUND");
+  });
+
   it("koden giver kun adgang til den ene rejse", async () => {
     const res = await query(t.app, "trips.get", { tripId: otherTrip.id }, jonas);
     expect(res.ok).toBe(false);

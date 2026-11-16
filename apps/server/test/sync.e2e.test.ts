@@ -414,3 +414,36 @@ describe("synkronisering (upload-kø og hentning)", () => {
     expect((await t.db.post.findUniqueOrThrow({ where: { id: jonasPostId } })).deletedAt).toBeNull();
   });
 });
+
+describe("indlæg fra alle rejser (valget \"Alle rejser\")", () => {
+  it("listPosts uden rejse giver alle rejsers indlæg, nyeste først og uden slettede", async () => {
+    const db = createLocalSqlite();
+    const rome = randomUUID();
+    const tokyo = randomUUID();
+    await insertTrip(db, { id: rome, name: "Rom", countryCode: "IT", startDate: "2026-05-12", endDate: "2026-05-19" });
+    await insertTrip(db, { id: tokyo, name: "Tokyo", countryCode: "JP", startDate: "2026-09-01", endDate: "2026-09-10" });
+    const post = (id: string, tripId: string, takenAt: string) =>
+      insertPost(db, {
+        id,
+        tripId,
+        authorId: "u1",
+        authorName: "Sara",
+        text: id,
+        takenAt,
+        lat: null,
+        lon: null,
+        placeName: null,
+        weather: null,
+        countryCode: null,
+        localImageUri: null,
+      });
+    await post("rom-1", rome, "2026-05-13T10:00:00.000Z");
+    await post("tokyo-1", tokyo, "2026-09-02T10:00:00.000Z");
+    await post("rom-2", rome, "2026-05-15T10:00:00.000Z");
+    await post("slettet", tokyo, "2026-09-03T10:00:00.000Z");
+    await markPostDeleted(db, "slettet");
+
+    expect((await listPosts(db, null)).map((p) => p.id)).toEqual(["tokyo-1", "rom-2", "rom-1"]);
+    expect((await listPosts(db, rome)).map((p) => p.id)).toEqual(["rom-2", "rom-1"]);
+  });
+});

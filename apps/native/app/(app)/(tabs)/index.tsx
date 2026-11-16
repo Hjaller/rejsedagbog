@@ -5,10 +5,10 @@ import { ActivityIndicator, FlatList, ScrollView, View } from "react-native";
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { PostCard, PostDetail, PostListItem } from "@/components/post-views";
-import { TripHeader } from "@/components/trip-header";
+import { TripHeader, useTripLabel } from "@/components/trip-header";
 import { useBreakpoint } from "@/lib/breakpoints";
 import { useLocalDb } from "@/lib/local-db/provider";
-import { useActiveTrip, usePendingCount, usePosts } from "@/lib/local-db/queries";
+import { useSelectedPosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
 import { space, usePalette } from "@/lib/theme";
 
@@ -17,15 +17,16 @@ export default function TimelineScreen() {
   const router = useRouter();
   const bp = useBreakpoint();
   const { user } = useLocalDb();
-  const { trip, isLoading: tripLoading } = useActiveTrip();
-  const posts = usePosts(trip?.id);
-  const pending = usePendingCount(trip?.id);
+  const { trip, trips, showAll, scope, posts, pendingCount, isLoading: tripLoading } = useSelectedPosts();
+  const tripLabel = useTripLabel(trips, showAll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const refresh = useRefreshSync();
 
-  const header = <TripHeader eyebrow="REJSEPOST" trip={trip} pendingCount={pending.data ?? 0} />;
+  const header = (
+    <TripHeader eyebrow="REJSEPOST" trip={trip} allTrips={showAll ? trips : null} pendingCount={pendingCount} />
+  );
 
-  if (tripLoading || (trip && posts.isLoading)) {
+  if (tripLoading || (scope && posts.isLoading)) {
     return (
       <View style={{ flex: 1 }}>
         {header}
@@ -34,7 +35,7 @@ export default function TimelineScreen() {
     );
   }
 
-  if (!trip) {
+  if (!scope) {
     return (
       <View style={{ flex: 1 }}>
         {header}
@@ -69,7 +70,11 @@ export default function TimelineScreen() {
         <EmptyState
           icon="camera-outline"
           title="Ingen indlæg endnu"
-          message="Tag et billede – sted, vejr og land bliver tilføjet automatisk."
+          message={
+            showAll
+              ? "Ingen af dine rejser har indlæg endnu. Tag et billede – sted, vejr og land bliver tilføjet automatisk."
+              : "Tag et billede – sted, vejr og land bliver tilføjet automatisk."
+          }
         >
           <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/new")} />
         </EmptyState>
@@ -93,6 +98,7 @@ export default function TimelineScreen() {
                 post={item}
                 currentUserId={user.id}
                 selected={item.id === selected.id}
+                tripLabel={tripLabel(item)}
                 onPress={() => setSelectedId(item.id)}
               />
             )}
@@ -131,7 +137,12 @@ export default function TimelineScreen() {
           alignSelf: "center",
         }}
         renderItem={({ item }) => (
-          <PostCard post={item} currentUserId={user.id} onPress={() => router.push(`/post/${item.id}`)} />
+          <PostCard
+            post={item}
+            currentUserId={user.id}
+            tripLabel={tripLabel(item)}
+            onPress={() => router.push(`/post/${item.id}`)}
+          />
         )}
       />
     </View>

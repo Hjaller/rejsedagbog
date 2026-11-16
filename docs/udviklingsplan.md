@@ -166,7 +166,7 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 
 | Router | Procedurer | Adgang |
 |---|---|---|
-| `trips` | `list`, `get`, `create`, `update`, `delete` | `protectedProcedure`; `get/update/delete` via `tripMemberProcedure` (`update/delete` kun ejer) |
+| `trips` | `list`, `get`, `members`, `create`, `update`, `delete` | `protectedProcedure`; `get/members/update/delete` via `tripMemberProcedure` (`update/delete` kun ejer) |
 | `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `tripMemberProcedure`; `update/delete` kun forfatteren |
 | `enrich` | `preview({lat, lon, takenAt})`, `countries` | `protectedProcedure` + rate limit |
 | `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
@@ -209,7 +209,7 @@ app/
 
 Maks. tre tryk fra start til gemt indlæg: "+" → "Tag billede" → (skriv tekst) → "Gem indlæg". Rejsen er forvalgt som den aktive rejse.
 
-**Native moduler**, som installeres med `npx expo install`: `expo-camera`, `expo-image-picker`, `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image` (og senere `react-native-maps`, `react-native-view-shot`, `expo-video`).
+**Native moduler**, som installeres med `npx expo install`: `expo-camera`, `expo-image-picker`, `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image` (og senere `@maplibre/maplibre-react-native`, `react-native-view-shot`, `expo-video`).
 Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges først, når funktionen bruges. Danske tekster sættes i `app.json` (`NSCameraUsageDescription` osv.).
 
 **Web (Should):** Next.js-appen genbruger tRPC-routerne og viser rejseoversigt, tidslinje og galleri som master/detail. Den skal kun kunne læse; der oprettes ikke indlæg på web.
@@ -273,7 +273,7 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 
 - **Grupperejser:** ejeren genererer en kode på 6 tegn (`invites.createCode`), og andre tilslutter sig med `invites.join(code)`, hvilket opretter en `TripMember`. Rate limit på `join`, så koder ikke kan gættes.
 - **Filter i galleriet:** gruppér efter `takenAt`-dato og filtrér på `authorId`. Det kan gøres lokalt i SQLite.
-- **Kort:** `react-native-maps` med markører for indlæg, der har `lat`/`lon`. På web bruges Leaflet + OSM-tiles.
+- **Kort:** MapLibre (`@maplibre/maplibre-react-native`) med OpenStreetMap-tiles og markører for indlæg, der har `lat`/`lon`. Ingen API-nøgle (Google Maps, som `react-native-maps` bruger på Android, kræver en). På web bruges Leaflet + OSM-tiles.
 - **Redigér/slet:** kun forfatteren, sletning sker som soft delete med `deletedAt`, og S3-objekterne slettes.
 - **Video (Could):** `expo-image-picker` med `videoMaxDuration: 30`, `Media.kind = 'video'`, en størrelsesgrænse på upload og `expo-video` til afspilning.
 - **Postkort (Could):** gengiv billede, tekst og sted med `react-native-view-shot` og del med `expo-sharing`. Det gengivne billede har ingen EXIF/GPS (sikkerhedsrisiko 3).
@@ -410,7 +410,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - **Grupperejser med invitationskode (2):** `invites`-routeren (`createCode`, `revokeCode`, `join`). Koden er 6 tegn uden 0/O og 1/I og passer stadig til `^[A-Z0-9]{6}$`. Kun ejeren ser og styrer koden; `join` er idempotent og begrænset til 10 forsøg pr. bruger og 20 forkerte koder pr. IP pr. 10 minutter (i hukommelsen, se `services/attempt-limiter.ts`). IP-grænsen er nødvendig, fordi konti er billige: med kun en grænse pr. bruger kunne én IP oprette ~7.000 konti i døgnet og gætte ~10 mio. koder. IP-grænsen virker kun bag proxyen, når `TRUST_PROXY` er sat. I appen: "Tilslut" under Rejser og en invitér-knap på egne rejser med "Del kode" (systemets delemenu) og "Stop invitationer". Invitationer kræver net; resten af appen virker stadig offline.
 - **Filter i galleriet (3):** filtrér på person og dag (vises kun, når der er mere end én at vælge mellem). Filtreringen sker i appen på de lokale data.
 
-**Tests** (80 i alt, før 58)
+**Tests** (82 i alt, før 58)
 - `invites`: kode på 6 tegn og samme kode ved næste kald, kun ejeren kan styre koden, medlemmer ser ikke koden, koden giver kun adgang til den ene rejse, idempotent join, ugyldigt format/ukendt kode, fjernet kode, 429 efter 10 forsøg pr. bruger og efter 20 forkerte koder fra samme IP (på tværs af konti).
 - `access-control`: `invites.createCode`/`revokeCode` giver NOT_FOUND for ikke-medlemmer.
 - `sync.e2e`: rettelse offline → sendt ved net, rettelse der fejler overskrives ikke af hentningen, rettelse før upload, sletning offline inkl. billede i bucket og lokal fil, sletning før upload sendes aldrig, forældreløst billede fjernes, andres indlæg kan ikke slettes (og kommer tilbage).
@@ -424,3 +424,26 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - Koderne udløber ikke af sig selv; ejeren kan stoppe dem. Mulig forbedring: udløb efter fx 7 dage.
 
 **Næste skridt:** deploy (uge 3 mandag), derefter Should-features 4) Next.js-webvisning og 5) kortvisning.
+
+### 12. nov. 2026: deploy og kortvisning (Should 5)
+
+**Deploy på Coolify**
+- API: https://api.example.com, web: https://app.example.com, Postgres som Coolify-database (ikke offentlig). Migrationer køres ved hver opstart af API-containeren.
+- Rettet undervejs: Prisma-klienten er gitignoreret og skal genereres i Docker-buildet (`prisma generate`), og runner-images skal have `curl`, fordi Coolifys healthcheck kører curl/wget i containeren.
+- `TRUST_PROXY=10.0.0.0/24` (Coolifys interne net, hvor Traefik sidder). Serveren ser nu klientens rigtige IP, så IP-grænserne virker.
+- Billeder bruger indtil videre dev-bucket'en; en prod-bucket er kun et env-skift.
+
+**Kortvisning (5)**
+- MapLibre med OpenStreetMap-tiles, så der ikke skal bruges en Google Maps-nøgle. Kræver et nyt dev-build (native modul). Hvert indlæg med position vises som en rund miniature (stiplet kant, hvis det ikke er uploadet). Tryk viser indlægget i et kort nederst (på stor skærm i højre side), og "Vis alle"-knappen zoomer ud til hele rejsen.
+- OSM's brugsregler: synlig kreditering på kortet og en User-Agent, der identificerer appen (`TransformRequestManager.addHeader`). Ingen forudhentning af tiles.
+- Offline vises de tiles, MapLibre har gemt fra tidligere visninger; resten er en neutral baggrund, og markørerne vises stadig, fordi de kommer fra SQLite.
+- Expo web har en simpel erstatning (`trip-map.web.tsx`); kortet på web laves i Next.js med Leaflet.
+
+**Hvem er med i gruppen**
+- `trips.members` (kun for medlemmer) giver navn, rolle og hvornår de kom med. E-mails sendes ikke, så de andre i gruppen kun ser navnet.
+- Skærmen "Gruppen" åbnes fra "N i gruppen" i headeren eller fra gruppe-ikonet ved hver rejse under Rejser. Ejeren kommer herfra videre til invitationskoden. Listen gemmes i SQLite og vises offline med "Viser gruppen, som den så ud sidst". Kaldet har en timeout på 8 s, så et dårligt net ikke får skærmen til at hænge. Antal i gruppen opdateres samtidig.
+- Tests: 84 i alt (medlemsliste uden e-mails og med ejeren først; NOT_FOUND for ikke-medlemmer).
+
+**Kendte begrænsninger:** indlæg på samme sted ligger oven på hinanden (ingen klynger), og en rejse over datolinjen giver et forkert udsnit.
+
+**Næste skridt:** Should 4) Next.js-webvisning (inkl. kort med Leaflet), APK til brugertesten med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`.

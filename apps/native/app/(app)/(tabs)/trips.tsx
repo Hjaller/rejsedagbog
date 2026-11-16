@@ -7,19 +7,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { formatDateRange } from "@/lib/dates";
-import { useActiveTrip, usePostCounts } from "@/lib/local-db/queries";
-import type { LocalTrip } from "@/lib/local-db/repo";
+import { allTripsSummary } from "@/components/trip-header";
+import { ALL_TRIPS, useActiveTrip, usePostCounts } from "@/lib/local-db/queries";
 import { radius, space, usePalette } from "@/lib/theme";
 
 export default function TripsScreen() {
   const p = usePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { trip: active, trips, setActiveTrip, isLoading } = useActiveTrip();
+  const { trip: active, showAll, trips, setActiveTrip, isLoading } = useActiveTrip();
   const counts = usePostCounts();
+  const totalPosts = trips.reduce((sum, t) => sum + (counts.data?.[t.id] ?? 0), 0);
 
-  const choose = async (trip: LocalTrip) => {
-    await setActiveTrip(trip.id);
+  const choose = async (tripId: string) => {
+    await setActiveTrip(tripId);
     router.navigate("/");
   };
 
@@ -67,12 +68,46 @@ export default function TripsScreen() {
           data={trips}
           keyExtractor={(t) => t.id}
           contentContainerStyle={{ padding: space.lg, gap: space.md, maxWidth: 720, width: "100%", alignSelf: "center" }}
+          ListHeaderComponent={
+            // Tidslinje, galleri og kort for alle rejser på én gang. Med én rejse er det det samme.
+            trips.length > 1 ? (
+              <Pressable
+                onPress={() => choose(ALL_TRIPS)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showAll }}
+                accessibilityHint="Vis indlæg fra alle rejser i tidslinjen, galleriet og på kortet"
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: space.md,
+                  padding: space.lg,
+                  borderRadius: radius.lg,
+                  borderCurve: "continuous",
+                  borderWidth: showAll ? 2 : 1,
+                  borderColor: showAll ? p.ink : p.border,
+                  backgroundColor: pressed ? p.surfaceMuted : p.surface,
+                })}
+              >
+                <View style={{ width: 40, alignItems: "center" }}>
+                  <Ionicons name="earth-outline" size={30} color={p.text} />
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: p.text, fontSize: 18, fontWeight: "700" }}>Alle rejser</Text>
+                  <Text style={{ color: p.textMuted, fontSize: 14 }} numberOfLines={1}>
+                    {allTripsSummary(trips)}
+                  </Text>
+                  <Text style={{ color: p.textMuted, fontSize: 13 }}>{totalPosts} indlæg</Text>
+                </View>
+                {showAll ? <Ionicons name="checkmark-circle" size={24} color={p.ink} /> : null}
+              </Pressable>
+            ) : undefined
+          }
           renderItem={({ item }) => {
             const isActive = item.id === active?.id;
             const n = counts.data?.[item.id] ?? 0;
             return (
               <Pressable
-                onPress={() => choose(item)}
+                onPress={() => choose(item.id)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
                 accessibilityHint="Vis rejsens tidslinje"
@@ -102,24 +137,27 @@ export default function TripsScreen() {
                     {item.syncStatus !== "synkroniseret" ? " · kun på telefonen" : ""}
                   </Text>
                 </View>
-                {item.role === "owner" ? (
-                  <Pressable
-                    onPress={() => router.push({ pathname: "/trip/invite/[id]", params: { id: item.id } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Invitér til ${item.name}`}
-                    hitSlop={8}
-                    style={({ pressed }) => ({
-                      width: 44,
-                      height: 44,
-                      borderRadius: 22,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: pressed ? p.surfaceMuted : "transparent",
-                    })}
-                  >
-                    <Ionicons name="person-add-outline" size={22} color={p.text} />
-                  </Pressable>
-                ) : null}
+                {/* Gruppen: hvem der er med, og (for ejeren) invitér flere. */}
+                <Pressable
+                  onPress={() => router.push({ pathname: "/trip/members/[id]", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Gruppen på ${item.name}`}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? p.surfaceMuted : "transparent",
+                  })}
+                >
+                  <Ionicons
+                    name={item.memberCount > 1 ? "people-outline" : "person-add-outline"}
+                    size={22}
+                    color={p.text}
+                  />
+                </Pressable>
                 {isActive ? <Ionicons name="checkmark-circle" size={24} color={p.ink} /> : null}
               </Pressable>
             );

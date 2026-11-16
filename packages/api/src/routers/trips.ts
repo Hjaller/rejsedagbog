@@ -1,7 +1,7 @@
 import { tripCreateInput, tripUpdateInput } from "@rejsedagbog/shared";
 import { TRPCError } from "@trpc/server";
 
-import { toTripDto, tripSelect } from "../dto";
+import { toTripDto, tripSelect, type TripMemberDto } from "../dto";
 import { protectedProcedure, router, tripMemberProcedure, tripOwnerProcedure } from "../index";
 
 const asDate = (isoDate: string) => new Date(`${isoDate}T00:00:00.000Z`);
@@ -23,6 +23,23 @@ export const tripsRouter = router({
       select: tripSelect,
     });
     return toTripDto(trip, ctx.membership.role);
+  }),
+
+  /** Rejsens medlemmer: ejeren først, derefter i den rækkefølge, de kom med. Kun for medlemmer. */
+  members: tripMemberProcedure.query(async ({ ctx, input }): Promise<TripMemberDto[]> => {
+    const members = await ctx.db.tripMember.findMany({
+      where: { tripId: input.tripId },
+      select: { role: true, joinedAt: true, user: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    return members
+      .map((m) => ({
+        id: m.user.id,
+        name: m.user.name,
+        role: m.role === "owner" ? ("owner" as const) : ("member" as const),
+        joinedAt: m.joinedAt.toISOString(),
+      }))
+      .sort((a, b) => (a.role === b.role ? 0 : a.role === "owner" ? -1 : 1));
   }),
 
   /** Upsert på appens UUID: et retry efter offline-oprettelse giver ikke en dublet. */

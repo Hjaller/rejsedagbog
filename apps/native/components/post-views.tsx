@@ -70,10 +70,13 @@ function PostImage({
 export function PostCard({
   post,
   currentUserId,
+  tripLabel,
   onPress,
 }: {
   post: LocalPost;
   currentUserId: string;
+  /** Rejsens navn, når indlæg fra flere rejser vises sammen. */
+  tripLabel?: string | null;
   onPress: () => void;
 }) {
   const p = usePalette();
@@ -97,6 +100,11 @@ export function PostCard({
     >
       <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3 }} />
       <View style={{ padding: space.md, gap: space.xs }}>
+        {tripLabel ? (
+          <Text style={{ color: p.text, fontSize: 12, fontWeight: "600", letterSpacing: 0.4 }} numberOfLines={1}>
+            {tripLabel}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space.sm }}>
           <Text style={{ color: p.textMuted, fontSize: 13, flexShrink: 1 }} numberOfLines={1}>
             {placeLabel(post)}
@@ -129,11 +137,14 @@ export function PostListItem({
   post,
   currentUserId,
   selected,
+  tripLabel,
   onPress,
 }: {
   post: LocalPost;
   currentUserId: string;
   selected: boolean;
+  /** Rejsens navn, når indlæg fra flere rejser vises sammen. */
+  tripLabel?: string | null;
   onPress: () => void;
 }) {
   const p = usePalette();
@@ -179,10 +190,13 @@ export function PostListItem({
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
           {pending ? <SyncIcon status={post.syncStatus} size={12} /> : null}
-          <Text style={{ color: pending ? p.text : p.textMuted, fontSize: 12, fontWeight: pending ? "600" : "400" }}>
+          <Text
+            numberOfLines={1}
+            style={{ color: pending ? p.text : p.textMuted, fontSize: 12, fontWeight: pending ? "600" : "400", flexShrink: 1 }}
+          >
             {pending
               ? syncLabel(post.syncStatus)
-              : `${authorLabel(post, currentUserId)} · ${formatRelative(post.takenAt)}`}
+              : `${tripLabel ? `${tripLabel} · ` : ""}${authorLabel(post, currentUserId)} · ${formatRelative(post.takenAt)}`}
           </Text>
         </View>
       </View>

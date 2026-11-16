@@ -69,7 +69,17 @@ function defaultTrip(trips: LocalTrip[]): LocalTrip | undefined {
   return trips.find((t) => t.startDate <= today && today <= t.endDate) ?? trips[0];
 }
 
-/** Den aktive rejse (valgt i Rejser-fanen og forvalgt på opret-skærmen). */
+/**
+ * Valget "Alle rejser" i Rejser-fanen. Gemmes i stedet for et rejse-id; rejsernes
+ * id'er er UUID'er, så det kan ikke forveksles med en rigtig rejse.
+ */
+export const ALL_TRIPS = "alle";
+
+/**
+ * Den aktive rejse (valgt i Rejser-fanen og forvalgt på opret-skærmen).
+ * Med "Alle rejser" valgt er `trip` null og `showAll` true; `defaultTrip` er så den
+ * rejse, nye indlæg forvælges til.
+ */
 export function useActiveTrip() {
   const { db, user } = useLocalDb();
   const queryClient = useQueryClient();
@@ -81,7 +91,10 @@ export function useActiveTrip() {
   });
 
   const list = trips.data ?? [];
-  const trip = list.find((t) => t.id === activeId.data) ?? defaultTrip(list) ?? null;
+  const fallback = defaultTrip(list) ?? null;
+  // "Alle rejser" giver kun mening, når der er rejser at vise.
+  const showAll = activeId.data === ALL_TRIPS && list.length > 0;
+  const trip = showAll ? null : (list.find((t) => t.id === activeId.data) ?? fallback);
 
   const setActiveTrip = async (tripId: string) => {
     await setMeta(db, "activeTripId", tripId);
@@ -90,6 +103,9 @@ export function useActiveTrip() {
 
   return {
     trip,
+    showAll,
+    /** Den valgte rejse, eller (med "Alle rejser") den, der er i gang / den nyeste. */
+    defaultTrip: trip ?? fallback,
     trips: list,
     isLoading: trips.isLoading || activeId.isLoading,
     error: trips.error ?? activeId.error,
@@ -97,14 +113,27 @@ export function useActiveTrip() {
   };
 }
 
+/** Indlæg på én rejse, eller på alle rejser med `ALL_TRIPS`. Henter intet, når `tripId` mangler. */
 export function usePosts(tripId: string | undefined) {
   const { db, user } = useLocalDb();
   return useQuery({
     ...localQuery,
     queryKey: keys.posts(user.id, tripId ?? ""),
-    queryFn: () => listPosts(db, tripId!),
+    queryFn: () => listPosts(db, tripId === ALL_TRIPS ? null : tripId!),
     enabled: !!tripId,
   });
+}
+
+/**
+ * Det, tidslinje, galleri og kort viser: den aktive rejse eller alle rejser,
+ * med indlæg og antallet, der venter på upload, for samme udvalg.
+ */
+export function useSelectedPosts() {
+  const active = useActiveTrip();
+  const scope = active.showAll ? ALL_TRIPS : active.trip?.id;
+  const posts = usePosts(scope);
+  const pending = usePendingCount(active.showAll ? undefined : active.trip?.id);
+  return { ...active, scope, posts, pendingCount: pending.data ?? 0 };
 }
 
 export function usePost(postId: string | undefined) {
