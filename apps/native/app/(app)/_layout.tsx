@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { authClient } from "@/lib/auth-client";
 import { LocalDbProvider, useLocalDb, type CurrentUser } from "@/lib/local-db/provider";
 import { useRefreshCountryFactsOnStart } from "@/lib/local-db/queries";
-import { recoverPendingPhoto, stashRecoveredPhoto } from "@/lib/media";
+import { recoverPendingMedia, stashRecoveredMedia } from "@/lib/media";
 import { useSyncScheduler } from "@/lib/sync/sync-scheduler";
 import { fonts, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
@@ -17,21 +17,21 @@ function Bootstrap() {
   useSyncScheduler(db, user.id);
   // Landefakta (valuta, sprog) fra REST Countries via serveren, cachet i SQLite.
   useRefreshCountryFactsOnStart(() => trpcClient.enrich.countries.query());
-  useRecoverPendingPhoto();
+  useRecoverPendingMedia();
   return null;
 }
 
 /**
- * Lukkede Android appen, mens telefonens kamera var åbent, kommer billedet tilbage her,
- * når appen starter igen, og gemmes som et nyt indlæg, så det ikke går tabt.
+ * Lukkede Android appen, mens telefonens kamera var åbent, kommer billedet eller videoen
+ * tilbage her, når appen starter igen, og gemmes som et nyt indlæg, så det ikke går tabt.
  */
-function useRecoverPendingPhoto() {
+function useRecoverPendingMedia() {
   const router = useRouter();
   useEffect(() => {
     let cancelled = false;
-    void recoverPendingPhoto().then((photo) => {
-      if (cancelled || !photo) return;
-      stashRecoveredPhoto(photo);
+    void recoverPendingMedia().then((media) => {
+      if (cancelled || !media) return;
+      stashRecoveredMedia(media);
       router.push({ pathname: "/post/new", params: { recovered: "1" } });
     });
     return () => {
@@ -106,6 +106,7 @@ export default function AppLayout() {
         <Stack.Screen name="post/[id]" options={{ title: "" }} />
         <Stack.Screen name="profile" options={{ title: "Profil" }} />
         <Stack.Screen name="post/edit/[id]" options={{ presentation: "modal", title: "Redigér indlæg" }} />
+        <Stack.Screen name="post/postcard/[id]" options={{ presentation: "modal", title: "Postkort" }} />
         <Stack.Screen name="trip/new" options={{ presentation: "modal", title: "Ny rejse" }} />
         <Stack.Screen name="trip/join" options={{ presentation: "modal", title: "Tilslut rejse" }} />
         <Stack.Screen name="trip/invite/[id]" options={{ presentation: "modal", title: "Invitér" }} />

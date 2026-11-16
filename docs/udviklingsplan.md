@@ -132,13 +132,14 @@ model Post {
 model Media {
   id        String @id @default(uuid())
   postId    String?
-  kind      String  // photo | video (Could)
-  key       String
-  thumbKey  String?
-  mimeType  String
-  sizeBytes Int
-  width     Int?
-  height    Int?
+  kind       String  // photo | video (Could)
+  key        String  // .jpg, eller .mp4 for video
+  thumbKey   String? // thumbnail, eller plakatramme for video
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  durationMs Int?    // kun video
 }
 ```
 
@@ -146,7 +147,7 @@ Relationerne til `User` fra Better Auths `auth.prisma` tilføjes. Migrationer k�
 
 ### App (expo-sqlite)
 
-Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remoteMediaId`, `lastError`, `attempts`, `updatedAt`), `countries` (cache) og `meta`. Migrationer styres med `PRAGMA user_version`. Billeder kopieres til `FileSystem.documentDirectory/images/`.
+Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remoteMediaId`, `lastError`, `attempts`, `updatedAt`, `pendingOp` og for video `mediaKind`, `localThumbUri`, `durationMs`), `countries` (cache) og `meta`. Migrationer styres med `PRAGMA user_version` (nu v3). Billeder og videoer kopieres til `FileSystem.documentDirectory/images/`.
 
 `syncStatus`: `lokal → uploader → synkroniseret`, plus `fejl`, som prøves igen med backoff.
 
@@ -172,7 +173,7 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 | `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `tripMemberProcedure`; `update/delete` kun forfatteren |
 | `enrich` | `preview({lat, lon, takenAt})`, `searchPlaces({query, countryCode?})`, `countries` | `protectedProcedure` + rate limit |
 | `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
-| REST `POST /api/uploads` | multipart: `tripId`, `postId`, `file` | session + medlemskab |
+| REST `POST /api/uploads` | multipart: `tripId`, `mediaId`, `kind` (`photo`/`video`), `file` | session + medlemskab |
 
 **Fælles adgangs-middleware:** `tripMemberProcedure` læser `tripId` fra input, slår `TripMember` op og kaster `FORBIDDEN`/`NOT_FOUND`. Alle procedurer, der rører rejsedata, skal bygge på den (risiko 3 i risikoanalysen). Upload-routen genbruger den samme funktion `assertTripMember(userId, tripId)`.
 
@@ -223,7 +224,7 @@ Profilen er en avatar i headeren, og rejsen skiftes i et ark fra headeren.
 
 Maks. tre tryk fra start til gemt indlæg: "+" → "Tag et billede" → udløseren i systemkameraet. Billedet gemmes med det samme i den aktive rejse, og tekst kan skrives bagefter. Fra albummet kan man vælge op til 20 billeder på én gang.
 
-**Native moduler**, som installeres med `npx expo install`: `expo-image-picker` (systemkamera og album, se afsnit 0, punkt 7), `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image` og `@maplibre/maplibre-react-native` (og senere `react-native-view-shot` og `expo-video`, hvis Could-features laves).
+**Native moduler**, som installeres med `npx expo install`: `expo-image-picker` (systemkamera og album, se afsnit 0, punkt 7), `expo-location`, `expo-sharing`, `expo-sqlite`, `expo-file-system`, `expo-image`, `@maplibre/maplibre-react-native` og til Could-features `expo-video`, `expo-video-thumbnails`, `react-native-view-shot` og `expo-keep-awake`.
 Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges først, når funktionen bruges. Danske tekster sættes i `app.json` (`NSCameraUsageDescription` osv.).
 
 **Web (Should):** Next.js-appen genbruger tRPC-routerne og viser rejseoversigt, tidslinje og galleri som master/detail. Den skal kun kunne læse; der oprettes ikke indlæg på web.
@@ -289,9 +290,9 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 - **Filter i galleriet:** gruppér efter `takenAt`-dato og filtrér på `authorId`. Det kan gøres lokalt i SQLite.
 - **Kort:** MapLibre (`@maplibre/maplibre-react-native`) med OpenStreetMap-tiles og markører for indlæg, der har `lat`/`lon`. Ingen API-nøgle (Google Maps, som `react-native-maps` bruger på Android, kræver en). På web bruges Leaflet + OSM-tiles.
 - **Redigér/slet:** kun forfatteren, sletning sker som soft delete med `deletedAt`, og S3-objekterne slettes.
-- **Video (Could):** `expo-image-picker` med `videoMaxDuration: 30`, `Media.kind = 'video'`, en størrelsesgrænse på upload og `expo-video` til afspilning.
-- **Postkort (Could):** gengiv billede, tekst og sted med `react-native-view-shot` og del med `expo-sharing`. Det gengivne billede har ingen EXIF/GPS (sikkerhedsrisiko 3).
-- **Diasshow (Could):** fuldskærmsviewer med autoplay-timer.
+- **Video (Could, lavet):** `expo-image-picker` med `videoMaxDuration: 30`, `Media.kind = 'video'`, en størrelsesgrænse på upload og `expo-video` til afspilning. Serveren fjerner videoens metadata (GPS) med ffmpeg. Se status 16. nov.
+- **Postkort (Could, lavet):** gengiv billede, tekst og sted med `react-native-view-shot` og del med `expo-sharing`. Det gengivne billede har ingen EXIF/GPS (sikkerhedsrisiko 3).
+- **Diasshow (Could, lavet):** fuldskærmsviewer med autoplay-timer.
 
 ---
 
@@ -490,8 +491,64 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - "Brug min position" i "Sæt sted" kunne hænge med en spinner, hvis kaldet om tilladelse fejlede.
 - `unstable_settings.initialRouteName` er skiftet til `anchor` (udfaset i Expo Router).
 
+### 16. nov. 2026: Could-features (video, postkort, diasshow)
+
+**Video (højst 30 s)**
+- "+"-arket har fået "Optag en video" (systemkameraet med `videoMaxDuration: 30`). Albummet tager nu både billeder og videoer, og for lange eller for store videoer springes over med en besked.
+- Appen gemmer videoen lokalt med en plakatramme (`expo-video-thumbnails`) og længden. SQLite v3 har kolonnerne `mediaKind`, `localThumbUri` og `durationMs`.
+- Upload: appen sender `kind`. Serveren streamer videoen til en midlertidig fil og bruger ffmpeg (`ffmpeg-static`) til følgende:
+  - Den validerer filen (kun mov/mp4-demuxeren, kun lokale filer).
+  - Den kræver h264 eller hevc og højst 30 s.
+  - Den fjerner al metadata, herunder GPS, og laver en plakatramme.
+  - Billedsporet kopieres uden genkodning. Lyd, der ikke er AAC, genkodes til AAC; det gælder fx AMR fra Android-kameraer, som MP4 ikke kan rumme.
+- Visning:
+  - Afspil-mærke og længde i tidslinjen, galleriet og detaljen.
+  - Fuldskærmsafspilning med `expo-video`.
+  - Den lokale udviklingslagring understøtter Range-forespørgsler.
+- Migration `20261116120000_media_duration` (`Media.durationMs`). Den køres ved opstart af containeren.
+
+**Del som postkort**
+- Detaljen har knappen "Del som postkort". Skærmen viser følgende som et papirkort:
+  - billedet eller plakatrammen med poststempel;
+  - "Hilsen fra" med stedet og teksten;
+  - et frimærke med flag, dato, vejr og afsender.
+- `react-native-view-shot` tager kortet som JPEG, og `expo-sharing` åbner systemets delemenu. Den delte fil har ingen EXIF eller GPS, kun stednavnet på kortet.
+
+**Diasshow**
+- Fuldskærmsvisningen har en "Start diasshow"-knap. Diasshowet viser billeder i 4 s hver, og videoer spilles færdige.
+- Efter det sidste indlæg starter det forfra. Skærmen holdes tændt (`expo-keep-awake`), og et tryk stopper diasshowet.
+
+**Test**
+- 107 servertests består. Videotestene bruger rigtige ffmpeg-videoer og dækker:
+  - GPS fjernes;
+  - rotationen bevares;
+  - længdegrænsen;
+  - falske videoer;
+  - AMR-lyd;
+  - Range-forespørgsler;
+  - synkronisering end-to-end, inkl. sletning.
+- Afprøvet på Android-emulatoren (pixel_7, API 36) med nyt dev-build:
+  - optagelse med systemkameraet;
+  - upload og synkronisering;
+  - afspilning;
+  - diasshow med billeder og video;
+  - deling af postkort.
+- Rettet under afprøvningen:
+  - Androids kamera-video med AMR-lyd blev afvist af serveren.
+  - Plakatrammen fejlede lige efter kameraet; nu prøves der igen.
+  - Diasshowet viste et sort glimt ved spring fra sidste til første side.
+
+**Kendte begrænsninger**
+- **Nyt build:** `expo-video`, `expo-video-thumbnails`, `expo-sharing`, `react-native-view-shot` og `expo-keep-awake` er native moduler, så der skal laves et nyt dev-build og en ny APK.
+- **Rækkefølge ved deploy:** serveren skal deployes før appen. En ældre server ville gemme en video som billede.
+- **Ingen genkodning af billedet:** HEVC-videoer fra iPhone kan måske ikke afspilles på ældre Android-telefoner, og 4K-videoer fylder meget (op til 200 MB).
+- **Hukommelse:** serveren lægger hele den færdige video i hukommelsen ved upload til S3.
+- **Udløbne links:** de signerede video-links udløber efter 15 min. En video, der har været åben længe, skal hentes igen ved at trække ned i tidslinjen.
+- **Mikrofon på Android:** `RECORD_AUDIO` er blokeret, fordi systemets kamera-app selv optager lyden. iOS har en mikrofontekst i `app.json`.
+- **Web:** video kan ikke optages, postkort kan ikke deles, og albummet tager kun billeder.
+
 **Mangler (samlet pr. 16. nov.)**
-- **Deploy:** serveren skal deployes med `posts.update`-positionen og `enrich.searchPlaces`, før en ny APK laves. Skift til en separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler).
+- **Deploy:** serveren skal deployes, før en ny APK laves. Den skal have `posts.update`-positionen, `enrich.searchPlaces` og video-uploaden (ffmpeg og migrationen `media_duration`). Skift til en separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler).
 - **Should 4) Next.js-webvisning:** `apps/web` har stadig kun scaffoldets login og dashboard. Den skal vise rejseoversigt, tidslinje og galleri som master/detail plus et kort med Leaflet og OSM, og den skal kun kunne læse.
 - **Brugertest:** byg en APK med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`, test med mindst én medstuderende, og lav og dokumentér rettelserne.
 - **Testmatrix (afsnit 7):**
@@ -502,7 +559,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - **README:** "Deployment" er stadig scaffoldets Docker Compose-tekst. Den skal beskrive Coolify, env, `TRUST_PROXY` og Hetzner.
 - **Kravspecifikationen:** tekstændringerne i afsnit 0 skal ind.
 - **Præsentation og fremlæggelse.**
-- **Could** (kun hvis der er tid): video, deling af postkort, diasshow.
+- **Could:** video, deling af postkort og diasshow er lavet (se ovenfor). De mangler kun at blive afprøvet på en fysisk telefon og iOS. Serveren med ffmpeg skal deployes før den nye APK.
 - **Kendte begrænsninger, der ikke er planlagt:**
   - Man kan ikke forlade en rejse, og ejeren kan ikke fjerne medlemmer.
   - Invitationskoder udløber ikke.

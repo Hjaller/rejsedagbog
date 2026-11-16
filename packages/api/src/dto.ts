@@ -1,4 +1,4 @@
-import type { Weather } from "@rejsedagbog/shared";
+import type { MediaKind, Weather } from "@rejsedagbog/shared";
 
 import type { MediaStorage } from "./storage";
 
@@ -29,12 +29,15 @@ export type TripMemberDto = {
 
 export type MediaDto = {
   id: string;
-  kind: string;
-  /** Signeret, tidsbegrænset URL. null hvis lageret ikke er konfigureret. */
+  kind: MediaKind;
+  /** Signeret, tidsbegrænset URL til billedet eller videoen. null hvis lageret ikke er konfigureret. */
   url: string | null;
+  /** Thumbnail, eller plakatrammen for en video. */
   thumbUrl: string | null;
   width: number | null;
   height: number | null;
+  /** Kun for video. */
+  durationMs: number | null;
 };
 
 export type PostDto = {
@@ -98,7 +101,7 @@ export function toTripDto(
 export const postInclude = {
   author: { select: { id: true, name: true } },
   media: {
-    select: { id: true, kind: true, key: true, thumbKey: true, width: true, height: true },
+    select: { id: true, kind: true, key: true, thumbKey: true, width: true, height: true, durationMs: true },
     orderBy: { createdAt: "asc" },
   },
 } as const;
@@ -124,6 +127,7 @@ type PostRow = {
     thumbKey: string | null;
     width: number | null;
     height: number | null;
+    durationMs: number | null;
   }[];
 };
 
@@ -144,11 +148,12 @@ export async function toPostDto(post: PostRow, storage: MediaStorage | null): Pr
     : await Promise.all(
         post.media.map(async (m) => ({
           id: m.id,
-          kind: m.kind,
+          kind: m.kind === "video" ? ("video" as const) : ("photo" as const),
           url: storage ? await storage.signedGetUrl(m.key) : null,
           thumbUrl: storage && m.thumbKey ? await storage.signedGetUrl(m.thumbKey) : null,
           width: m.width,
           height: m.height,
+          durationMs: m.durationMs,
         })),
       );
   return {

@@ -1,12 +1,15 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { countryName, flagEmoji, formatCountryFacts, formatWeather, weatherLabel } from "@rejsedagbog/shared";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
+import { Button } from "@/components/button";
 import { PostActions } from "@/components/post-actions";
 import { SyncIcon, syncLabel } from "@/components/sync-status";
 import { formatDateTimeLong, formatRelative } from "@/lib/dates";
-import { postImageSource, type LocalPost } from "@/lib/local-db/repo";
+import { isVideo, postImageSource, postVideoUri, type LocalPost } from "@/lib/local-db/repo";
+import { formatDuration } from "@/lib/media";
 import { useCountryFacts } from "@/lib/local-db/queries";
 import { radius, space, typo, usePalette, type Palette } from "@/lib/theme";
 
@@ -120,6 +123,82 @@ function PostImage({
   );
 }
 
+/**
+ * Afspil-mærke over en videos plakatramme. `compact` er til små miniaturer (galleri,
+ * lister): kun et lille ikon i hjørnet. Ellers en afspil-knap i midten og længden nederst.
+ */
+export function VideoBadge({ post, compact = false }: { post: LocalPost; compact?: boolean }) {
+  if (!isVideo(post)) return null;
+  if (compact) {
+    return (
+      <View
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 4,
+          bottom: 4,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 2,
+          paddingHorizontal: 4,
+          paddingVertical: 1,
+          borderRadius: 4,
+          backgroundColor: "rgba(0,0,0,0.55)",
+        }}
+      >
+        <Ionicons name="play" size={10} color="#FFFFFF" />
+        {post.durationMs != null ? (
+          <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
+            {formatDuration(post.durationMs)}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" }}
+    >
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: "rgba(0,0,0,0.45)",
+          borderWidth: 2,
+          borderColor: "rgba(255,255,255,0.9)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="play" size={26} color="#FFFFFF" style={{ marginLeft: 3 }} />
+      </View>
+      {post.durationMs != null ? (
+        <Text
+          style={{
+            position: "absolute",
+            left: 10,
+            bottom: 8,
+            color: "#FFFFFF",
+            fontSize: 13,
+            fontWeight: "700",
+            fontVariant: ["tabular-nums"],
+            textShadowColor: "rgba(0,0,0,0.6)",
+            textShadowRadius: 3,
+          }}
+        >
+          {formatDuration(post.durationMs)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** Kort status til kort og lister: kun når indlægget ikke er sendt endnu. */
 function PendingNote({ post, size = 13 }: { post: LocalPost; size?: number }) {
   const p = usePalette();
@@ -158,7 +237,7 @@ export function PostCard({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${placeLabel(post)}. ${post.text}`}
+      accessibilityLabel={`${isVideo(post) ? "Video. " : ""}${placeLabel(post)}. ${post.text}`}
       style={({ pressed }) => ({
         backgroundColor: p.surface,
         borderRadius: radius.sm,
@@ -175,6 +254,7 @@ export function PostCard({
     >
       <View>
         <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: 2 }} />
+        <VideoBadge post={post} />
         {hasImage ? <Postmark post={post} /> : null}
       </View>
       <View style={{ paddingHorizontal: space.xs, gap: 6 }}>
@@ -239,19 +319,22 @@ export function PostListItem({
       {selected ? (
         <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, backgroundColor: p.accent }} />
       ) : null}
-      <PostImage
-        post={post}
-        size="thumb"
-        p={p}
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: radius.sm,
-          borderWidth: pending ? 1.5 : 0,
-          borderStyle: "dashed",
-          borderColor: p.accent,
-        }}
-      />
+      <View>
+        <PostImage
+          post={post}
+          size="thumb"
+          p={p}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: radius.sm,
+            borderWidth: pending ? 1.5 : 0,
+            borderStyle: "dashed",
+            borderColor: p.accent,
+          }}
+        />
+        <VideoBadge post={post} compact />
+      </View>
       <View style={{ flex: 1, gap: 2, justifyContent: "center" }}>
         <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
           {placeLabel(post)}
@@ -339,8 +422,10 @@ export function PostDetail({
   onDeleted?: () => void;
 }) {
   const p = usePalette();
+  const router = useRouter();
   const facts = useCountryFacts(post.countryCode);
   const pending = isPending(post);
+  const video = isVideo(post);
 
   const coords = post.lat != null && post.lon != null ? `${post.lat.toFixed(4)}, ${post.lon.toFixed(4)}` : null;
   const place = post.placeName ?? (coords ? `${coords}${pending ? " (navn hentes senere)" : ""}` : "Ingen position");
@@ -356,9 +441,9 @@ export function PostDetail({
       {/* Billedet som et aftryk med hvid kant */}
       <Pressable
         onPress={onImagePress}
-        disabled={!onImagePress || !postImageSource(post)}
+        disabled={!onImagePress || !(postImageSource(post) || postVideoUri(post))}
         accessibilityRole="imagebutton"
-        accessibilityLabel="Vis billedet i fuld skærm"
+        accessibilityLabel={video ? "Afspil videoen" : "Vis billedet i fuld skærm"}
         style={{
           backgroundColor: p.surface,
           padding: 10,
@@ -368,7 +453,10 @@ export function PostDetail({
           marginHorizontal: space.xs,
         }}
       >
-        <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3 }} />
+        <View>
+          <PostImage post={post} size="full" p={p} style={{ width: "100%", aspectRatio: 4 / 3 }} />
+          <VideoBadge post={post} />
+        </View>
       </Pressable>
 
       <View style={{ gap: space.xs }}>
@@ -429,6 +517,17 @@ export function PostDetail({
       </View>
 
       <SyncStatusRow post={post} />
+
+      {/* Postkort (Could): kræver et billede eller en plakatramme, og deling virker ikke på web. */}
+      {process.env.EXPO_OS !== "web" && postImageSource(post) ? (
+        <Button
+          label="Del som postkort"
+          icon="share-outline"
+          variant="secondary"
+          onPress={() => router.push({ pathname: "/post/postcard/[id]", params: { id: post.id } })}
+          accessibilityHint="Laver et postkort med billedet, teksten og stedet, som du kan sende til andre"
+        />
+      ) : null}
 
       {post.authorId === currentUserId ? <PostActions post={post} onDeleted={onDeleted} /> : null}
     </View>

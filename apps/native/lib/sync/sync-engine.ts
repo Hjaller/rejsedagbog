@@ -1,4 +1,5 @@
 import type { AppRouter } from "@rejsedagbog/api/routers/index";
+import type { MediaKind } from "@rejsedagbog/shared";
 import { TRPCClientError, type TRPCClient } from "@trpc/client";
 
 // Relative imports, så filen også kan køres af serverens testsuite.
@@ -25,7 +26,7 @@ import {
 /**
  * Upload-køen (udviklingsplan afsnit 3):
  *  1. rejser oprettet offline sendes til serveren (idempotent upsert på UUID)
- *  2. indlæg uploades ét ad gangen: billede → posts.create → status "synkroniseret"
+ *  2. indlæg uploades ét ad gangen: billede/video → posts.create → status "synkroniseret"
  *  3. rettelser og sletninger af egne indlæg sendes (posts.update / posts.delete)
  *  4. rejser og andres indlæg hentes og flettes ind i SQLite
  * Netværksfejl stopper kørslen uden at tælle forsøg; serverfejl giver backoff.
@@ -53,7 +54,7 @@ export type SyncResult = {
 export type SyncDeps = {
   api: TRPCClient<AppRouter>;
   /** POST /api/uploads. Skal kaste OfflineError ved netværksfejl og AuthError ved 401. */
-  uploadImage(args: { tripId: string; mediaId: string; localUri: string }): Promise<void>;
+  uploadMedia(args: { tripId: string; mediaId: string; localUri: string; kind: MediaKind }): Promise<void>;
   fileExists(uri: string): boolean;
   deleteFile(uri: string): void;
   /** Gør relative medie-URL'er (lokal udviklingslagring) absolutte. */
@@ -136,13 +137,24 @@ async function pushPosts(deps: SyncDeps, db: LocalDb, opts: SyncOptions) {
   for (const post of await listUploadQueue(db, { ignoreBackoff: opts.ignoreBackoff })) {
     await markPostUploading(db, post.id);
     try {
-      // Ét billede pr. indlæg: billedets id = indlæggets id, så et retry er idempotent.
+      // Ét billede eller én video pr. indlæg: mediets id = indlæggets id, så et retry er idempotent.
       let mediaId = post.remoteMediaId;
       if (post.localImageUri && !mediaId) {
         if (!deps.fileExists(post.localImageUri)) {
-          throw new Error("Billedfilen findes ikke længere på telefonen");
+          throw new Error(
+            post.mediaKind === "video"
+              ? "Videofilen findes ikke længere på telefonen"
+              : "Billedfilen findes ikke længere på telefonen",
+          );
         }
-        await call(() => deps.uploadImage({ tripId: post.tripId, mediaId: post.id, localUri: post.localImageUri! }));
+        await call(() =>
+          deps.uploadMedia({
+            tripId: post.tripId,
+            mediaId: post.id,
+            localUri: post.localImageUri!,
+            kind: post.mediaKind,
+          }),
+        );
         mediaId = post.id;
         await markMediaUploaded(db, post.id, mediaId);
       }
@@ -172,12 +184,13 @@ async function pushPosts(deps: SyncDeps, db: LocalDb, opts: SyncOptions) {
   return { uploaded, failed };
 }
 
-function deleteLocalFile(deps: SyncDeps, uri: string | null) {
-  if (!uri) return;
-  try {
-    if (deps.fileExists(uri)) deps.deleteFile(uri);
-  } catch {
-    // Ikke kritisk.
+function deleteLocalFiles(deps: SyncDeps, uris: string[]) {
+  for (const uri of uris) {
+    try {
+      if (deps.fileExists(uri)) deps.deleteFile(uri);
+    } catch {
+      // Ikke kritisk.
+    }
   }
 }
 
@@ -193,7 +206,7 @@ async function pushChanges(deps: SyncDeps, db: LocalDb) {
           // Findes ikke på serveren (aldrig uploadet eller allerede slettet): målet er nået.
           if (trpcCode(err) !== "NOT_FOUND") throw err;
         }
-        deleteLocalFile(deps, await finishPendingDelete(db, change.id));
+        deleteLocalFiles(deps, await finishPendingDelete(db, change.id));
       } else {
         // Positionen sendes med; serveren finder kun sted og vejr på ny, hvis den er ændret.
         const dto = await call(() =>
@@ -255,7 +268,7 @@ export async function runSyncWith(deps: SyncDeps, db: LocalDb, opts: SyncOptions
     if (opts.pull) {
       const pulled = await pull(deps, db);
       result.pulledChanges = pulled.changes;
-      for (const uri of pulled.orphanedFiles) deleteLocalFile(deps, uri);
+      deleteLocalFiles(deps, pulled.orphanedFiles);
     }
   } catch (err) {
     if (err instanceof OfflineError) {

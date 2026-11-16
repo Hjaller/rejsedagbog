@@ -7,14 +7,14 @@ import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { flagEmoji } from "@rejsedagbog/shared";
 
-import { authorLabel, PostDetail } from "@/components/post-views";
+import { authorLabel, PostDetail, VideoBadge } from "@/components/post-views";
 import { DayHeading, TripHeader } from "@/components/trip-header";
 import { galleryColumns, useBreakpoint } from "@/lib/breakpoints";
 import { dayHeading, formatDayShort, toIsoDate } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useSelectedPosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
-import { postImageSource, postImageUri, type LocalPost, type LocalTrip } from "@/lib/local-db/repo";
+import { isVideo, postImageSource, postImageUri, type LocalPost, type LocalTrip } from "@/lib/local-db/repo";
 import { radius, space, typo, usePalette } from "@/lib/theme";
 
 type Row = { type: "day"; key: string; title: string; subtitle?: string } | { type: "row"; key: string; posts: LocalPost[] };
@@ -312,7 +312,7 @@ function GalleryCell({
     <Pressable
       onPress={onPress}
       accessibilityRole="imagebutton"
-      accessibilityLabel={post.text || post.placeName || "Billede"}
+      accessibilityLabel={`${isVideo(post) ? "Video: " : ""}${post.text || post.placeName || (isVideo(post) ? "uden tekst" : "Billede")}`}
       style={({ pressed }) => ({ width: size, height: size, opacity: pressed ? 0.8 : 1 })}
     >
       <Image
@@ -321,6 +321,7 @@ function GalleryCell({
         contentFit="cover"
         recyclingKey={post.id}
       />
+      <VideoBadge post={post} compact />
       {pending || selected ? (
         <View
           style={{

@@ -5,13 +5,15 @@ import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/button";
+import { VIDEO_MAX_SECONDS } from "@rejsedagbog/shared";
+
 import { useActiveTrip } from "@/lib/local-db/queries";
 import { ALBUM_LIMIT } from "@/lib/media";
 import { radius, space, typo, usePalette } from "@/lib/theme";
 
 /**
- * "+" åbner dette ark: tag et billede med telefonens kamera, eller vælg et eller
- * flere fra albummet. Begge dele gemmes med det samme på opret-skærmen.
+ * "+" åbner dette ark: tag et billede eller optag en video med telefonens kamera, eller
+ * vælg et eller flere fra albummet. Alt gemmes med det samme på opret-skærmen.
  */
 export default function NewPostSheet() {
   const p = usePalette();
@@ -19,7 +21,7 @@ export default function NewPostSheet() {
   const insets = useSafeAreaInsets();
   const { defaultTrip, isLoading } = useActiveTrip();
 
-  const open = (source: "camera" | "album") => router.replace({ pathname: "/post/new", params: { source } });
+  const open = (source: "camera" | "video" | "album") => router.replace({ pathname: "/post/new", params: { source } });
 
   return (
     <View
@@ -67,10 +69,22 @@ export default function NewPostSheet() {
             filled
             onPress={() => open("camera")}
           />
+          {process.env.EXPO_OS !== "web" ? (
+            <Choice
+              icon="videocam-outline"
+              title="Optag en video"
+              subtitle={`Højst ${VIDEO_MAX_SECONDS} sekunder`}
+              onPress={() => open("video")}
+            />
+          ) : null}
           <Choice
             icon="images-outline"
             title="Vælg fra album"
-            subtitle={`Et eller flere billeder, op til ${ALBUM_LIMIT} ad gangen`}
+            subtitle={
+              process.env.EXPO_OS === "web"
+                ? `Et eller flere billeder, op til ${ALBUM_LIMIT} ad gangen`
+                : `Billeder og videoer, op til ${ALBUM_LIMIT} ad gangen`
+            }
             onPress={() => open("album")}
           />
         </View>

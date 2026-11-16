@@ -21,11 +21,13 @@ const serverUrl = ENV.EXPO_PUBLIC_SERVER_URL.replace(/\/$/, "");
 /**
  * Expos fetch accepterer ikke React Natives { uri, name, type } i FormData
  * ("Unsupported FormDataPart implementation"), kun objekter med bytes() som File.
+ * Felterne sendes før filen, så serveren ved, om det er en video, når filen kommer.
  */
-async function uploadImage({ tripId, mediaId, localUri }: { tripId: string; mediaId: string; localUri: string }) {
+const uploadMedia: SyncDeps["uploadMedia"] = async ({ tripId, mediaId, localUri, kind }) => {
   const form = new FormData();
   form.append("tripId", tripId);
   form.append("mediaId", mediaId);
+  form.append("kind", kind);
   form.append("file", new File(localUri));
 
   const cookie = await authClient.getCookie();
@@ -46,11 +48,11 @@ async function uploadImage({ tripId, mediaId, localUri }: { tripId: string; medi
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `Upload fejlede (${res.status})`);
   }
-}
+};
 
 export const nativeSyncDeps: SyncDeps = {
   api: trpcClient,
-  uploadImage,
+  uploadMedia,
   fileExists: (uri) => new File(uri).exists,
   deleteFile: (uri) => new File(uri).delete(),
   resolveMediaUrl: mediaUrlResolver(serverUrl),

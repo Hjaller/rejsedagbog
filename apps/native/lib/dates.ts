@@ -84,6 +84,12 @@ export function formatDateTimeLong(iso: string): string {
   return `${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()} kl. ${formatTime(d)}`;
 }
 
+/** "14. maj 2026" – postkortet */
+export function formatDateLong(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 /** "Tirsdag 12. maj" – overskrift i galleriet */
 export function formatDayHeading(date: Date): string {
   const wd = WEEKDAYS[date.getDay()]!;

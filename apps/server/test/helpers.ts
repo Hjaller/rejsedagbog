@@ -172,3 +172,78 @@ export async function upload(
   if (user) headers.cookie = user.cookie;
   return app.inject({ method: "POST", url: "/api/uploads", headers, payload });
 }
+
+/**
+ * Lille testvideo lavet med ffmpeg, med en GPS-position i metadata (som telefoner
+ * skriver), så vi kan tjekke at serveren fjerner den. `rotate` giver en portræt-video
+ * gemt liggende, som telefoner gør.
+ */
+export async function videoWithLocation({
+  seconds = 2,
+  width = 320,
+  height = 240,
+  codec = "libx264",
+  rotate,
+  audio = "aac",
+}: {
+  seconds?: number;
+  width?: number;
+  height?: number;
+  codec?: string;
+  rotate?: number;
+  /** Lyd, MP4 ikke kan rumme (fx AMR som fra Androids kamera), gemmes i en .3gp. */
+  audio?: string;
+} = {}): Promise<Buffer> {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const ffmpeg = (await import("ffmpeg-static")).default as unknown as string;
+  const dir = mkdtempSync(path.join(tmpdir(), "rejsepost-test-"));
+  const out = path.join(dir, audio === "aac" ? "video.mp4" : "video.3gp");
+  try {
+    execFileSync(
+      ffmpeg,
+      [
+        "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", `testsrc=duration=${seconds}:size=${width}x${height}:rate=10`,
+        "-f", "lavfi", "-i", `sine=duration=${seconds}`,
+        "-c:v", codec, "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", audio,
+        ...(audio === "aac" ? [] : ["-ar", "8000", "-ac", "1"]),
+        "-metadata", "location=+41.9009+012.4833/",
+        "-metadata", "title=Trevi",
+        "-y", out,
+      ],
+      { stdio: "pipe" },
+    );
+    if (rotate == null) return readFileSync(out);
+    // Rotationen er en input-option, så den sættes ved en kopi af filen.
+    const rotated = path.join(dir, `rotated${path.extname(out)}`);
+    execFileSync(
+      ffmpeg,
+      ["-hide_banner", "-loglevel", "error", "-display_rotation", String(rotate), "-i", out, "-c", "copy",
+        "-metadata", "location=+41.9009+012.4833/", "-y", rotated],
+      { stdio: "pipe" },
+    );
+    return readFileSync(rotated);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** ffmpegs stream-info om en fil (til at tjekke metadata i testene). */
+export async function ffmpegInfo(data: Uint8Array): Promise<string> {
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const ffmpeg = (await import("ffmpeg-static")).default as unknown as string;
+  const dir = mkdtempSync(path.join(tmpdir(), "rejsepost-test-"));
+  const file = path.join(dir, "probe.mp4");
+  try {
+    writeFileSync(file, data);
+    return spawnSync(ffmpeg, ["-hide_banner", "-i", file], { encoding: "utf8" }).stderr;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}

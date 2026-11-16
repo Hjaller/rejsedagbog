@@ -1,7 +1,7 @@
 import type { MediaDto, PostDto, TripDto } from "@rejsedagbog/api/routers/index";
 
 import type { LocalDb } from "./types";
-import type { LocalPost, LocalTrip } from "./repo";
+import { localFilesOf, type LocalPost, type LocalTrip } from "./repo";
 
 /**
  * Databaseoperationer til upload-køen og hentning fra serveren (udviklingsplan afsnit 3).
@@ -58,7 +58,7 @@ export async function deleteTripsMissingOnServer(db: LocalDb, serverIds: string[
 
 type QueueRow = Pick<
   LocalPost,
-  "id" | "tripId" | "text" | "takenAt" | "lat" | "lon" | "localImageUri" | "remoteMediaId" | "attempts"
+  "id" | "tripId" | "text" | "takenAt" | "lat" | "lon" | "localImageUri" | "mediaKind" | "remoteMediaId" | "attempts"
 >;
 
 /**
@@ -67,7 +67,7 @@ type QueueRow = Pick<
  */
 export function listUploadQueue(db: LocalDb, opts: { ignoreBackoff: boolean }): Promise<QueueRow[]> {
   return db.getAllAsync<QueueRow>(
-    `SELECT p.id, p.tripId, p.text, p.takenAt, p.lat, p.lon, p.localImageUri, p.remoteMediaId, p.attempts
+    `SELECT p.id, p.tripId, p.text, p.takenAt, p.lat, p.lon, p.localImageUri, p.mediaKind, p.remoteMediaId, p.attempts
        FROM posts p JOIN trips t ON t.id = p.tripId
       WHERE p.syncStatus != 'synkroniseret' AND p.deletedAt IS NULL
         AND t.syncStatus = 'synkroniseret'
@@ -152,15 +152,15 @@ export async function finishPendingUpdate(
   );
 }
 
-/** Sletningen er gennemført på serveren: rækken fjernes. Returnerer billedfilen, der kan slettes. */
-export async function finishPendingDelete(db: LocalDb, postId: string): Promise<string | null> {
-  const row = await db.getFirstAsync<{ localImageUri: string | null }>(
-    "SELECT localImageUri FROM posts WHERE id = ? AND pendingOp = 'delete'",
+/** Sletningen er gennemført på serveren: rækken fjernes. Returnerer filerne, der kan slettes. */
+export async function finishPendingDelete(db: LocalDb, postId: string): Promise<string[]> {
+  const row = await db.getFirstAsync<{ localImageUri: string | null; localThumbUri: string | null }>(
+    "SELECT localImageUri, localThumbUri FROM posts WHERE id = ? AND pendingOp = 'delete'",
     postId,
   );
-  if (!row) return null;
+  if (!row) return [];
   await db.runAsync("DELETE FROM posts WHERE id = ? AND pendingOp = 'delete'", postId);
-  return row.localImageUri;
+  return localFilesOf(row);
 }
 
 /**
@@ -181,17 +181,22 @@ export async function discardPendingChange(db: LocalDb, change: PendingChange) {
 
 function mediaUrls(media: MediaDto[], resolveUrl: (u: string | null) => string | null) {
   const m = media[0];
-  return { url: resolveUrl(m?.url ?? null), thumbUrl: resolveUrl(m?.thumbUrl ?? null) };
+  return {
+    url: resolveUrl(m?.url ?? null),
+    thumbUrl: resolveUrl(m?.thumbUrl ?? null),
+    kind: m?.kind === "video" ? "video" : "photo",
+    durationMs: m?.durationMs ?? null,
+  };
 }
 
 /** Opdaterer et indlæg med serverens berigede data (sted, vejr, land) efter upload. */
 export async function markPostSynced(db: LocalDb, dto: PostDto, resolveUrl: (u: string | null) => string | null) {
-  const { url, thumbUrl } = mediaUrls(dto.media, resolveUrl);
+  const { url, thumbUrl, durationMs } = mediaUrls(dto.media, resolveUrl);
   await db.runAsync(
     `UPDATE posts SET syncStatus = 'synkroniseret', lastError = NULL, attempts = 0, nextAttemptAt = NULL,
        placeName = COALESCE(?, placeName), weatherJson = COALESCE(?, weatherJson),
        countryCode = COALESCE(?, countryCode), remoteImageUrl = ?, remoteThumbUrl = ?,
-       remoteMediaId = COALESCE(?, remoteMediaId), updatedAt = ?
+       remoteMediaId = COALESCE(?, remoteMediaId), durationMs = COALESCE(?, durationMs), updatedAt = ?
      WHERE id = ?`,
     dto.placeName,
     dto.weather ? JSON.stringify(dto.weather) : null,
@@ -199,6 +204,7 @@ export async function markPostSynced(db: LocalDb, dto: PostDto, resolveUrl: (u: 
     url,
     thumbUrl,
     dto.media[0]?.id ?? null,
+    durationMs,
     dto.updatedAt,
     dto.id,
   );
@@ -222,7 +228,8 @@ export async function mergeServerPosts(
     pendingOp: string | null;
     updatedAt: string;
     localImageUri: string | null;
-  }>("SELECT id, syncStatus, pendingOp, updatedAt, localImageUri FROM posts WHERE tripId = ?", tripId);
+    localThumbUri: string | null;
+  }>("SELECT id, syncStatus, pendingOp, updatedAt, localImageUri, localThumbUri FROM posts WHERE tripId = ?", tripId);
   const localById = new Map(local.map((p) => [p.id, p]));
   const serverIds = new Set(posts.map((p) => p.id));
 
@@ -231,20 +238,22 @@ export async function mergeServerPosts(
       const existing = localById.get(dto.id);
       // Egne indlæg, der ikke er uploadet, eller som har en rettelse/sletning på vej, røres ikke.
       if (existing && (existing.syncStatus !== "synkroniseret" || existing.pendingOp)) continue;
-      const { url, thumbUrl } = mediaUrls(dto.media, resolveUrl);
+      const { url, thumbUrl, kind, durationMs } = mediaUrls(dto.media, resolveUrl);
       if (!existing) changed++;
       else if (existing.updatedAt !== dto.updatedAt) changed++;
       // URL'erne skrives altid, fordi de signerede links udløber.
       await tx.runAsync(
         `INSERT INTO posts (id, tripId, authorId, authorName, text, takenAt, lat, lon, placeName, weatherJson,
-                            countryCode, remoteMediaId, remoteImageUrl, remoteThumbUrl, syncStatus, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synkroniseret', ?, ?)
+                            countryCode, remoteMediaId, remoteImageUrl, remoteThumbUrl, mediaKind, durationMs,
+                            syncStatus, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synkroniseret', ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            authorName = excluded.authorName, text = excluded.text, takenAt = excluded.takenAt,
            lat = excluded.lat, lon = excluded.lon, placeName = excluded.placeName,
            weatherJson = excluded.weatherJson, countryCode = excluded.countryCode,
            remoteMediaId = excluded.remoteMediaId, remoteImageUrl = excluded.remoteImageUrl,
-           remoteThumbUrl = excluded.remoteThumbUrl, updatedAt = excluded.updatedAt`,
+           remoteThumbUrl = excluded.remoteThumbUrl, mediaKind = excluded.mediaKind,
+           durationMs = excluded.durationMs, updatedAt = excluded.updatedAt`,
         dto.id,
         dto.tripId,
         dto.author.id,
@@ -259,6 +268,8 @@ export async function mergeServerPosts(
         dto.media[0]?.id ?? null,
         url,
         thumbUrl,
+        kind,
+        durationMs,
         dto.createdAt,
         dto.updatedAt,
       );
@@ -267,7 +278,7 @@ export async function mergeServerPosts(
     for (const p of local) {
       if (p.syncStatus === "synkroniseret" && !serverIds.has(p.id)) {
         await tx.runAsync("DELETE FROM posts WHERE id = ?", p.id);
-        if (p.localImageUri) orphanedFiles.push(p.localImageUri);
+        orphanedFiles.push(...localFilesOf(p));
         changed++;
       }
     }

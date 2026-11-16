@@ -17,7 +17,7 @@ export type LocalMediaStorage = MediaStorage & {
   resolveSigned(key: string, exp: string, sig: string): string | null;
 };
 
-const KEY_PATTERN = /^trips\/[0-9a-f-]{36}\/[0-9a-f-]{36}(_thumb)?\.jpg$/;
+const KEY_PATTERN = /^trips\/[0-9a-f-]{36}\/[0-9a-f-]{36}(_thumb\.jpg|\.jpg|\.mp4)$/;
 
 export function createLocalStorage(rootDir: string, secret: string): LocalMediaStorage {
   const sign = (key: string, exp: number) =>

@@ -74,6 +74,13 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE posts ADD COLUMN pendingOp TEXT;
   CREATE INDEX posts_pending_op ON posts (pendingOp) WHERE pendingOp IS NOT NULL;
   `,
+  // v3: video (Could). For en video er localImageUri/remoteImageUrl selve videoen, og
+  // localThumbUri/remoteThumbUrl plakatrammen, som vises i lister og på kortet.
+  `
+  ALTER TABLE posts ADD COLUMN mediaKind TEXT NOT NULL DEFAULT 'photo';
+  ALTER TABLE posts ADD COLUMN localThumbUri TEXT;
+  ALTER TABLE posts ADD COLUMN durationMs INTEGER;
+  `,
 ];
 
 export function migrate(db: MigratableDb) {

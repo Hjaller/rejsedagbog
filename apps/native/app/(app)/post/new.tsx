@@ -27,19 +27,25 @@ import { formatTime, tripDay } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useActiveTrip, useCreatePost, useDeletePost, useUpdatePostText } from "@/lib/local-db/queries";
 import { getMeta, getPost, setMeta } from "@/lib/local-db/repo";
+import type { MediaKind } from "@rejsedagbog/shared";
+
 import {
+  capture,
   CAPTURE_MAX_AGE_MS,
+  createVideoPoster,
+  formatDuration,
   getCurrentCoords,
   getLocationPermission,
-  persistPhoto,
-  pickPhotos,
+  persistMedia,
+  pickFromAlbum,
   requestLocationPermission,
   SCREEN_OPEN_MAX_AGE_MS,
-  takePhoto,
-  takeRecoveredPhoto,
+  takeRecoveredMedia,
+  videoProblemText,
   type Coords,
   type LocationPermission,
-  type PickedPhoto,
+  type PickedMedia,
+  type VideoProblem,
 } from "@/lib/media";
 import { radius, space, typo, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
@@ -57,16 +63,22 @@ const EXPLAINED_KEY = "locationExplainedAt";
 type SavedPost = {
   id: string;
   tripId: string;
+  kind: MediaKind;
+  /** Billedet eller videoen i appens mappe. */
   localImageUri: string;
+  /** Plakatrammen til en video. */
+  localThumbUri: string | null;
+  durationMs: number | null;
   takenAt: string;
   coords: Coords | null;
   /** Teksten, som den er gemt i databasen. */
   text: string;
 };
 
-type Source = "camera" | "album";
+/** "camera" er et billede, "video" en video med telefonens kamera; "album" kan give begge dele. */
+type Source = "camera" | "video" | "album";
 
-type ChooseReason = "denied" | "unavailable" | "albumUnavailable" | "web";
+type ChooseReason = "denied" | "unavailable" | "albumUnavailable" | "web" | VideoProblem;
 
 type Phase =
   | { kind: "start" }
@@ -76,11 +88,11 @@ type Phase =
   | { kind: "picking" }
   /** Intet billede: mangler tilladelse, kameraet/albummet kunne ikke åbnes, eller vi er på web. */
   | { kind: "choose"; reason: ChooseReason }
-  | { kind: "saving"; uri: string; done: number; total: number }
-  /** D2: indlæggene er gemt; tekst (ved ét billede) og rejse kan rettes. */
-  | { kind: "saved"; posts: SavedPost[]; source: Source }
-  /** `photos` er dem, der mangler; `saved` dem, der nåede at blive gemt. */
-  | { kind: "error"; photos: PickedPhoto[]; saved: SavedPost[]; source: Source };
+  | { kind: "saving"; uri: string | undefined; done: number; total: number }
+  /** D2: indlæggene er gemt; tekst (ved ét billede) og rejse kan rettes. `notice`: videoer, der blev sprunget over. */
+  | { kind: "saved"; posts: SavedPost[]; source: Source; notice?: string | null }
+  /** `items` er dem, der mangler; `saved` dem, der nåede at blive gemt. */
+  | { kind: "error"; items: PickedMedia[]; saved: SavedPost[]; source: Source };
 
 /** Er billedet ældre end det, er positionen lige nu ikke stedet, hvor det blev taget. */
 const RECENT_PHOTO_MS = 30 * 60_000;
@@ -100,7 +112,7 @@ export default function NewPostScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ recovered?: string; source?: string }>();
   const recovered = params.recovered;
-  const initialSource: Source = params.source === "album" ? "album" : "camera";
+  const initialSource: Source = params.source === "album" ? "album" : params.source === "video" ? "video" : "camera";
   const { db, user } = useLocalDb();
   const { trip: activeTrip, defaultTrip, showAll, trips, setActiveTrip, isLoading } = useActiveTrip();
   const createPost = useCreatePost();
@@ -158,29 +170,35 @@ export default function NewPostScreen() {
   };
 
   /**
-   * Gemmer billederne som indlæg med det samme, i den rækkefølge de blev valgt.
-   * Tekst kan tilføjes bagefter. `before` er billeder, der allerede er gemt (ved "Prøv igen").
+   * Gemmer billederne og videoerne som indlæg med det samme, i den rækkefølge de blev
+   * valgt. Tekst kan tilføjes bagefter. `before` er dem, der allerede er gemt (ved "Prøv igen").
    */
   const saveMany = async (
-    photos: PickedPhoto[],
+    items: PickedMedia[],
     fix: Promise<Coords | null>,
     source: Source,
     before: SavedPost[] = [],
+    notice: string | null = null,
   ) => {
-    if (!trip || photos.length === 0) return;
+    if (!trip || items.length === 0) return;
     const saved = [...before];
-    const total = before.length + photos.length;
-    for (const [i, photo] of photos.entries()) {
-      setPhase({ kind: "saving", uri: photo.uri, done: saved.length, total });
+    const total = before.length + items.length;
+    for (const [i, item] of items.entries()) {
+      // En video kan ikke vises som billede, mens den gemmes.
+      setPhase({ kind: "saving", uri: item.kind === "photo" ? item.uri : undefined, done: saved.length, total });
       try {
         const id = Crypto.randomUUID();
-        // Først billedfilen, så den er sikret i appens egen mappe.
-        const localImageUri = persistPhoto(photo.uri, id);
-        // EXIF er den præcise position. Ellers bruges, hvor man er nu – men kun for et
-        // nyt billede; et gammelt billede fra albummet ville ellers havne et forkert sted.
-        const recent = !photo.takenAt || Date.now() - Date.parse(photo.takenAt) < RECENT_PHOTO_MS;
-        const coords = photo.coords ?? (recent ? await withTimeout(fix, CAPTURE_WAIT_MS) : null);
-        const takenAt = photo.takenAt ?? new Date().toISOString();
+        // Først filen, så den er sikret i appens egen mappe.
+        const localImageUri = persistMedia(item.uri, id, item.kind);
+        const localThumbUri = item.kind === "video" ? await createVideoPoster(localImageUri, id) : null;
+        // EXIF er den præcise position. Ellers bruges, hvor man er nu – men kun for et nyt
+        // billede; et gammelt billede fra albummet ville ellers havne et forkert sted. En video
+        // fra albummet har hverken position eller tidspunkt, så den får ingen position.
+        const recent = item.takenAt
+          ? Date.now() - Date.parse(item.takenAt) < RECENT_PHOTO_MS
+          : !(item.kind === "video" && source === "album");
+        const coords = item.coords ?? (recent ? await withTimeout(fix, CAPTURE_WAIT_MS) : null);
+        const takenAt = item.takenAt ?? new Date().toISOString();
         await createPost.mutateAsync({
           id,
           tripId: trip.id,
@@ -195,18 +213,31 @@ export default function NewPostScreen() {
           weather: null,
           countryCode: trip.countryCode ?? null,
           localImageUri,
+          mediaKind: item.kind,
+          localThumbUri,
+          durationMs: item.durationMs,
         });
         lastTripId.current = trip.id;
-        saved.push({ id, tripId: trip.id, localImageUri, takenAt, coords, text: "" });
+        saved.push({
+          id,
+          tripId: trip.id,
+          kind: item.kind,
+          localImageUri,
+          localThumbUri,
+          durationMs: item.durationMs,
+          takenAt,
+          coords,
+          text: "",
+        });
       } catch (e) {
         console.error("[post/new] kunne ikke gemme", e);
-        setPhase({ kind: "error", photos: photos.slice(i), saved, source });
+        setPhase({ kind: "error", items: items.slice(i), saved, source });
         return;
       }
     }
     setText("");
     setTextError(null);
-    setPhase({ kind: "saved", posts: saved, source });
+    setPhase({ kind: "saved", posts: saved, source, notice });
   };
 
   /** Fortrudt i kameraet eller albummet: tilbage til valget, hvis man kom derfra; ellers luk. */
@@ -215,13 +246,13 @@ export default function NewPostScreen() {
     else void close();
   };
 
-  const openCamera = async (perm: LocationPermission = locationPerm) => {
+  const openCamera = async (perm: LocationPermission = locationPerm, kind: MediaKind = "photo") => {
     const from = phase;
     setPhase({ kind: "picking" });
     // GPS'en startes, mens kameraet er åbent, så positionen som regel er klar, når billedet er taget.
     const openedAt = Date.now();
     let fix = startFix(perm, CAPTURE_MAX_AGE_MS);
-    const result = await takePhoto();
+    const result = await capture(kind);
     if (result.status === "ok") {
       // Har kameraet været åbent længe (fx i et tog), er målingen fra da det åbnede for gammel.
       // Så måles der igen; kommer den nye ikke i tide, bruges den gamle.
@@ -229,9 +260,10 @@ export default function NewPostScreen() {
         const early = fix;
         fix = withTimeout(startFix(perm, CAPTURE_MAX_AGE_MS), REMEASURE_WAIT_MS).then((c) => c ?? early);
       }
-      await saveMany([result.photo], fix, "camera");
+      await saveMany([result.media], fix, kind === "video" ? "video" : "camera");
     }
     else if (result.status === "canceled") canceled(from);
+    else if (result.status === "rejected") setPhase({ kind: "choose", reason: result.problem });
     else setPhase({ kind: "choose", reason: result.status });
   };
 
@@ -239,8 +271,18 @@ export default function NewPostScreen() {
     const from = phase;
     setPhase({ kind: "picking" });
     const fix = startFix(perm, SCREEN_OPEN_MAX_AGE_MS);
-    const result = await pickPhotos();
-    if (result.status === "ok") await saveMany(result.photos, fix, "album");
+    const result = await pickFromAlbum();
+    if (result.status === "ok") {
+      const first = result.rejected[0];
+      if (result.media.length === 0 && first) {
+        setPhase({ kind: "choose", reason: first.problem });
+        return;
+      }
+      const notice = first
+        ? `${result.rejected.length === 1 ? "1 video" : `${result.rejected.length} videoer`} blev sprunget over. ${videoProblemText(first.problem)}`
+        : null;
+      await saveMany(result.media, fix, "album", [], notice);
+    }
     else if (result.status === "canceled") canceled(from);
     else setPhase({ kind: "choose", reason: "albumUnavailable" });
   };
@@ -249,7 +291,7 @@ export default function NewPostScreen() {
     // På web må kameraet og albummet kun åbnes direkte fra et tryk.
     if (process.env.EXPO_OS === "web") setPhase({ kind: "choose", reason: "web" });
     else if (initialSource === "album") void openAlbum(perm);
-    else void openCamera(perm);
+    else void openCamera(perm, initialSource === "video" ? "video" : "photo");
   };
 
   // Første visning: et reddet billede (Android), forklaringen om placering, kameraet eller albummet.
@@ -259,9 +301,9 @@ export default function NewPostScreen() {
     void (async () => {
       const perm = await getLocationPermission();
       setLocationPerm(perm);
-      const rescued = recovered ? takeRecoveredPhoto() : null;
+      const rescued = recovered ? takeRecoveredMedia() : null;
       if (rescued) {
-        await saveMany([rescued], startFix(perm, CAPTURE_MAX_AGE_MS), "camera");
+        await saveMany([rescued], startFix(perm, CAPTURE_MAX_AGE_MS), rescued.kind === "video" ? "video" : "camera");
         return;
       }
       if (perm === "undetermined") {
@@ -308,7 +350,7 @@ export default function NewPostScreen() {
   const another = async (posts: SavedPost[], source: Source) => {
     if (!(await commitText(posts, source))) return;
     if (source === "album") await openAlbum();
-    else await openCamera();
+    else await openCamera(locationPerm, source === "video" ? "video" : "photo");
   };
 
   const undo = async (posts: SavedPost[]) => {
@@ -334,7 +376,8 @@ export default function NewPostScreen() {
         // Ved ét billede følger den skrevne tekst med; ellers har hvert indlæg sin egen.
         const movedText = posts.length === 1 && parsed.success ? parsed.data : post.text;
         const id = Crypto.randomUUID();
-        const localImageUri = persistPhoto(post.localImageUri, id);
+        const localImageUri = persistMedia(post.localImageUri, id, post.kind);
+        const localThumbUri = post.kind === "video" ? await createVideoPoster(localImageUri, id) : null;
         await createPost.mutateAsync({
           id,
           tripId: target.id,
@@ -348,20 +391,23 @@ export default function NewPostScreen() {
           weather: null,
           countryCode: target.countryCode ?? null,
           localImageUri,
+          mediaKind: post.kind,
+          localThumbUri,
+          durationMs: post.durationMs,
         });
         await deletePost.mutateAsync(post.id);
-        moved.push({ ...post, id, tripId: target.id, localImageUri, text: movedText });
+        moved.push({ ...post, id, tripId: target.id, localImageUri, localThumbUri, text: movedText });
       }
       setTripId(target.id);
       lastTripId.current = target.id;
       setMoveError(null);
-      setPhase({ kind: "saved", posts: moved, source });
+      setPhase({ kind: "saved", posts: moved, source, notice: phase.kind === "saved" ? phase.notice : null });
     } catch (e) {
       console.error("[post/new] kunne ikke flytte indlæggene", e);
       // De flyttede og de resterende. Et nyt forsøg springer dem over, der allerede er flyttet.
       setPhase({ kind: "saved", posts: [...moved, ...posts.slice(moved.length)], source });
       setMoveError(
-        posts.length === 1 ? "Indlægget kunne ikke flyttes. Prøv igen." : "Ikke alle billeder blev flyttet. Prøv igen.",
+        posts.length === 1 ? "Indlægget kunne ikke flyttes. Prøv igen." : "Ikke alle indlæg blev flyttet. Prøv igen.",
       );
     }
   };
@@ -405,38 +451,46 @@ export default function NewPostScreen() {
       return (
         <ChoosePhoto
           reason={phase.reason}
-          onCamera={() => void openCamera()}
+          video={initialSource === "video"}
+          onCamera={() => void openCamera(locationPerm, initialSource === "video" ? "video" : "photo")}
           onAlbum={() => void openAlbum()}
           onClose={() => router.back()}
         />
       );
     case "error": {
-      const { photos, saved, source } = phase;
-      const total = photos.length + saved.length;
+      const { items, saved, source } = phase;
+      const total = items.length + saved.length;
       return (
         <Screen onClose={() => void close()}>
           <EmptyState
             icon="alert-circle-outline"
-            title={total === 1 ? "Billedet kunne ikke gemmes" : `${photos.length} billeder kunne ikke gemmes`}
+            title={
+              total === 1
+                ? items[0]?.kind === "video"
+                  ? "Videoen kunne ikke gemmes"
+                  : "Billedet kunne ikke gemmes"
+                : `${countLabel(items)} kunne ikke gemmes`
+            }
             message={
               saved.length > 0
                 ? `${saved.length} af ${total} blev gemt. Der skete en fejl på telefonen med resten. Prøv igen.`
                 : "Der skete en fejl på telefonen. Prøv igen."
             }
           >
-            <Button label="Prøv igen" onPress={() => void saveMany(photos, Promise.resolve(null), source, saved)} />
+            <Button label="Prøv igen" onPress={() => void saveMany(items, Promise.resolve(null), source, saved)} />
             <Button label="Luk" variant="ghost" onPress={() => void close()} />
           </EmptyState>
         </Screen>
       );
     }
     case "saved": {
-      const { posts, source } = phase;
+      const { posts, source, notice } = phase;
       const postTrip = trips.find((t) => t.id === posts[0]?.tripId) ?? trip;
       return (
         <SavedView
           posts={posts}
           source={source}
+          notice={notice ?? null}
           trip={postTrip}
           trips={trips}
           locationPerm={locationPerm}
@@ -466,6 +520,7 @@ export default function NewPostScreen() {
 function SavedView({
   posts,
   source,
+  notice,
   trip,
   trips,
   locationPerm,
@@ -482,6 +537,7 @@ function SavedView({
 }: {
   posts: SavedPost[];
   source: Source;
+  notice: string | null;
   trip: { id: string; name: string; startDate: string; endDate: string; countryCode: string | null };
   trips: { id: string; name: string }[];
   locationPerm: LocationPermission;
@@ -543,7 +599,7 @@ function SavedView({
     <View style={{ flex: 1, backgroundColor: "#111110" }}>
       <StatusBar style="light" />
       <Image
-        source={{ uri: post.localImageUri }}
+        source={previewUri(post) ? { uri: previewUri(post)! } : null}
         style={{ position: "absolute", top: 0, left: 0, right: 0, height: height * 0.55 }}
         contentFit="cover"
         accessibilityIgnoresInvertColors
@@ -582,7 +638,7 @@ function SavedView({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
-                {single ? `Gemt i ${tripName}` : `${posts.length} billeder gemt i ${tripName}`}
+                {single ? `Gemt i ${tripName}` : `${countLabel(posts)} gemt i ${tripName}`}
               </Text>
               <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
                 {online ? "Sendes til gruppen nu" : "Ligger på telefonen · sendes, når du har net"}
@@ -620,28 +676,44 @@ function SavedView({
                   hint={coords ? "Ret stedet på et kort" : "Vælg på et kort, hvor billedet er taget"}
                 />
                 {weather ? <Chip icon="partly-sunny-outline" label={weather} /> : null}
+                {post.kind === "video" ? (
+                  <Chip icon="videocam-outline" label={`Video · ${formatDuration(post.durationMs)}`} />
+                ) : null}
                 <Chip icon="time-outline" label={`${formatTime(takenAt)}${day ? ` · dag ${day.day}` : ""}`} />
               </View>
             ) : (
               <View style={{ gap: space.sm }}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
                   {posts.map((x, i) => (
-                    <Image
-                      key={x.id}
-                      source={{ uri: x.localImageUri }}
-                      style={{ width: 72, height: 72, borderRadius: radius.sm, backgroundColor: p.placeholder }}
-                      contentFit="cover"
-                      accessibilityLabel={`Billede ${i + 1} af ${posts.length}`}
-                    />
+                    <View key={x.id}>
+                      <Image
+                        source={previewUri(x) ? { uri: previewUri(x)! } : null}
+                        style={{ width: 72, height: 72, borderRadius: radius.sm, backgroundColor: p.placeholder }}
+                        contentFit="cover"
+                        accessibilityLabel={`${x.kind === "video" ? "Video" : "Billede"} ${i + 1} af ${posts.length}`}
+                      />
+                      {x.kind === "video" ? (
+                        <View
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name="play-circle" size={28} color="rgba(255,255,255,0.92)" />
+                        </View>
+                      ) : null}
+                    </View>
                   ))}
                 </ScrollView>
                 <Text style={{ color: p.textMuted, fontSize: 14, lineHeight: 20 }}>
                   {withoutPosition === 0
                     ? "Tidspunkt og sted er taget fra billederne."
                     : withoutPosition === posts.length
-                      ? "Billederne har ingen position. Sæt stedet selv, så de kommer på kortet."
-                      : `${withoutPosition} af billederne har ingen position. Sæt stedet selv, så de kommer på kortet.`}{" "}
-                  Du kan skrive en tekst til hvert billede bagefter.
+                      ? "Der er ingen position. Sæt stedet selv, så de kommer på kortet."
+                      : `${withoutPosition} af dem har ingen position. Sæt stedet selv, så de kommer på kortet.`}{" "}
+                  Du kan skrive en tekst til hvert indlæg bagefter.
                 </Text>
                 {withoutPosition > 0 ? (
                   <Button
@@ -721,6 +793,11 @@ function SavedView({
                 {moveError}
               </Text>
             ) : null}
+            {notice ? (
+              <Text accessibilityRole="alert" style={{ color: p.accentText, fontSize: 14, lineHeight: 20 }}>
+                {notice}
+              </Text>
+            ) : null}
 
             {single ? (
               <TextField
@@ -745,8 +822,8 @@ function SavedView({
             }}
           >
             <Button
-              label={source === "album" ? "Vælg flere" : "Tag et billede mere"}
-              icon={source === "album" ? "images-outline" : "camera-outline"}
+              label={source === "album" ? "Vælg flere" : source === "video" ? "Optag en video mere" : "Tag et billede mere"}
+              icon={source === "album" ? "images-outline" : source === "video" ? "videocam-outline" : "camera-outline"}
               variant="secondary"
               size="lg"
               onPress={onAnother}
@@ -878,15 +955,20 @@ const CHOOSE_TEXT: Record<ChooseReason, { title: string; message: string }> = {
     message: "Prøv igen, eller tag et billede med kameraet.",
   },
   web: { title: "Nyt indlæg", message: "Tag et billede, eller vælg et fra dit album." },
+  tooLong: { title: "Videoen er for lang", message: `${videoProblemText("tooLong")} Optag en kortere, eller vælg en anden.` },
+  tooLarge: { title: "Videoen er for stor", message: `${videoProblemText("tooLarge")} Optag en kortere, eller vælg en anden.` },
 };
 
 function ChoosePhoto({
   reason,
+  video,
   onCamera,
   onAlbum,
   onClose,
 }: {
   reason: ChooseReason;
+  /** Kom brugeren fra "Optag video", åbner kameraknappen video igen. */
+  video: boolean;
   onCamera: () => void;
   onAlbum: () => void;
   onClose: () => void;
@@ -898,7 +980,7 @@ function ChoosePhoto({
         {reason === "denied" ? (
           <Button label="Åbn indstillinger" icon="settings-outline" onPress={() => void Linking.openSettings()} />
         ) : reason !== "unavailable" ? (
-          <Button label="Åbn kameraet" icon="camera" onPress={onCamera} />
+          <Button label={video ? "Optag igen" : "Åbn kameraet"} icon={video ? "videocam" : "camera"} onPress={onCamera} />
         ) : null}
         <Button
           label={reason === "albumUnavailable" ? "Prøv albummet igen" : "Vælg fra album"}
@@ -942,6 +1024,19 @@ function Screen({ children, onClose }: { children: ReactNode; onClose?: () => vo
       {children}
     </View>
   );
+}
+
+/** Billedet, der vises for et gemt indlæg: selve billedet, eller videoens plakatramme. */
+function previewUri(post: SavedPost): string | null {
+  return post.kind === "video" ? post.localThumbUri : post.localImageUri;
+}
+
+/** "3 billeder", "2 videoer" eller "4 indlæg", når de er blandet. */
+function countLabel(items: { kind: MediaKind }[]): string {
+  const videos = items.filter((x) => x.kind === "video").length;
+  if (videos === 0) return `${items.length} billeder`;
+  if (videos === items.length) return `${items.length} videoer`;
+  return `${items.length} indlæg`;
 }
 
 /** Mørk skærm, mens telefonens kamera er åbent eller billedet gemmes. */

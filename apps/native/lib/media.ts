@@ -1,41 +1,58 @@
+import { VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, type MediaKind } from "@rejsedagbog/shared";
 import { Directory, File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import * as VideoThumbnails from "expo-video-thumbnails";
 
-export type PickedPhoto = {
+/** Et billede eller en video fra kameraet eller albummet. */
+export type PickedMedia = {
+  kind: MediaKind;
   uri: string;
   width: number;
   height: number;
-  /** Tidspunkt og position fra billedets EXIF. Androids album fjerner ofte positionen. */
+  /** Tidspunkt og position fra billedets EXIF. Androids album fjerner ofte positionen; videoer har ingen. */
   takenAt: string | null;
   coords: Coords | null;
+  /** Kun for video. */
+  durationMs: number | null;
+  fileSize: number | null;
 };
 
 export type Coords = { lat: number; lon: number };
 
+/** Hvorfor en video ikke kan bruges. Serveren afviser den alligevel, så den stoppes her. */
+export type VideoProblem = "tooLong" | "tooLarge";
+
 export type PickResult =
-  | { status: "ok"; photo: PickedPhoto }
+  | { status: "ok"; media: PickedMedia }
   | { status: "canceled" }
   | { status: "denied" }
+  | { status: "rejected"; problem: VideoProblem }
   /** Intet kamera (fx simulator eller web) eller en fejl i systemets kamera-app. */
   | { status: "unavailable" };
 
-const pickerOptions: ImagePicker.ImagePickerOptions = {
+const photoOptions: ImagePicker.ImagePickerOptions = {
   mediaTypes: ["images"],
   // Komprimér i appen, så upload over dyre mobildata bliver mindre (udviklingsplan afsnit 9).
   quality: 0.8,
   exif: true,
 };
 
+// Kameraets egen kvalitet. (iOS' "IFrame"-presets er redigeringsformater med meget høj bitrate.)
+const videoOptions: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ["videos"],
+  videoMaxDuration: VIDEO_MAX_SECONDS,
+};
+
 /**
- * Åbner telefonens eget kamera (ikke et kamera bygget i appen). Kamera-tilladelsen
- * bedes først om her, når brugeren trykker på "+".
+ * Åbner telefonens eget kamera (ikke et kamera bygget i appen) til et billede eller en
+ * video på højst 30 sekunder. Kamera-tilladelsen bedes først om her.
  */
-export async function takePhoto(): Promise<PickResult> {
+export async function capture(kind: MediaKind): Promise<PickResult> {
   try {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) return { status: "denied" };
-    const result = await ImagePicker.launchCameraAsync(pickerOptions);
+    const result = await ImagePicker.launchCameraAsync(kind === "video" ? videoOptions : photoOptions);
     return toPickResult(result);
   } catch (e) {
     console.warn("[media] kameraet kunne ikke åbnes", e);
@@ -43,78 +60,113 @@ export async function takePhoto(): Promise<PickResult> {
   }
 }
 
-/** Så mange billeder kan vælges fra albummet ad gangen. */
+/** Så mange billeder og videoer kan vælges fra albummet ad gangen. */
 export const ALBUM_LIMIT = 20;
 
 export type PickManyResult =
-  | { status: "ok"; photos: PickedPhoto[] }
+  | {
+      status: "ok";
+      media: PickedMedia[];
+      /** Videoer, der er for lange eller store og derfor er sprunget over. */
+      rejected: { problem: VideoProblem }[];
+    }
   | { status: "canceled" }
   | { status: "unavailable" };
 
 /**
- * Telefonens album, hvor man kan vælge et eller flere billeder. Systemets vælger
- * kræver ingen tilladelse, fordi appen kun får de billeder, man vælger.
+ * Telefonens album, hvor man kan vælge et eller flere billeder og videoer. Systemets
+ * vælger kræver ingen tilladelse, fordi appen kun får det, man vælger. På web kun billeder.
  */
-export async function pickPhotos(): Promise<PickManyResult> {
+export async function pickFromAlbum(): Promise<PickManyResult> {
   try {
     const result = await ImagePicker.launchImageLibraryAsync({
-      ...pickerOptions,
+      ...photoOptions,
+      mediaTypes: process.env.EXPO_OS === "web" ? ["images"] : ["images", "videos"],
+      videoMaxDuration: VIDEO_MAX_SECONDS,
       allowsMultipleSelection: true,
       selectionLimit: ALBUM_LIMIT,
       orderedSelection: true,
     });
     if (result.canceled || result.assets.length === 0) return { status: "canceled" };
-    return { status: "ok", photos: result.assets.map(toPhoto) };
+    const media: PickedMedia[] = [];
+    const rejected: { problem: VideoProblem }[] = [];
+    for (const asset of result.assets) {
+      const item = toMedia(asset);
+      const problem = videoProblem(item);
+      if (problem) rejected.push({ problem });
+      else media.push(item);
+    }
+    return { status: "ok", media, rejected };
   } catch (e) {
     console.warn("[media] albummet kunne ikke åbnes", e);
     return { status: "unavailable" };
   }
 }
 
+/** Telefonen runder lidt op, så der gives et halvt sekunds luft (serveren giver et helt). */
+function videoProblem(item: PickedMedia): VideoProblem | null {
+  if (item.kind !== "video") return null;
+  if (item.durationMs != null && item.durationMs > VIDEO_MAX_SECONDS * 1000 + 500) return "tooLong";
+  if (item.fileSize != null && item.fileSize > VIDEO_MAX_BYTES) return "tooLarge";
+  return null;
+}
+
+export function videoProblemText(problem: VideoProblem): string {
+  return problem === "tooLong"
+    ? `Videoer må højst vare ${VIDEO_MAX_SECONDS} sekunder.`
+    : `Videoen fylder for meget (højst ${Math.round(VIDEO_MAX_BYTES / 1024 / 1024)} MB).`;
+}
+
 /**
- * Android kan lukke appen, mens systemets kamera er åbent; så er billedet ikke
- * kommet tilbage til opret-skærmen. Det hentes her, når appen starter igen.
+ * Android kan lukke appen, mens systemets kamera er åbent; så er billedet eller videoen
+ * ikke kommet tilbage til opret-skærmen. Det hentes her, når appen starter igen.
  * Giver altid null på iOS og web.
  */
-export async function recoverPendingPhoto(): Promise<PickedPhoto | null> {
+export async function recoverPendingMedia(): Promise<PickedMedia | null> {
   if (process.env.EXPO_OS !== "android") return null;
   try {
     const result = await ImagePicker.getPendingResultAsync();
     if (!result || !("canceled" in result)) return null;
     const picked = toPickResult(result);
-    return picked.status === "ok" ? picked.photo : null;
+    return picked.status === "ok" ? picked.media : null;
   } catch {
     return null;
   }
 }
 
-// Billedet fra recoverPendingPhoto, indtil opret-skærmen henter det.
-let recoveredPhoto: PickedPhoto | null = null;
+// Mediet fra recoverPendingMedia, indtil opret-skærmen henter det.
+let recoveredMedia: PickedMedia | null = null;
 
-export function stashRecoveredPhoto(photo: PickedPhoto) {
-  recoveredPhoto = photo;
+export function stashRecoveredMedia(media: PickedMedia) {
+  recoveredMedia = media;
 }
 
-/** Henter (og fjerner) det reddede billede. */
-export function takeRecoveredPhoto(): PickedPhoto | null {
-  const photo = recoveredPhoto;
-  recoveredPhoto = null;
-  return photo;
+/** Henter (og fjerner) det reddede billede eller den reddede video. */
+export function takeRecoveredMedia(): PickedMedia | null {
+  const media = recoveredMedia;
+  recoveredMedia = null;
+  return media;
 }
 
 function toPickResult(result: ImagePicker.ImagePickerResult): PickResult {
   const asset = result.canceled ? undefined : result.assets[0];
   if (!asset) return { status: "canceled" };
-  return { status: "ok", photo: toPhoto(asset) };
+  const media = toMedia(asset);
+  const problem = videoProblem(media);
+  return problem ? { status: "rejected", problem } : { status: "ok", media };
 }
 
-function toPhoto(asset: ImagePicker.ImagePickerAsset): PickedPhoto {
+function toMedia(asset: ImagePicker.ImagePickerAsset): PickedMedia {
+  const kind: MediaKind = asset.type === "video" ? "video" : "photo";
   return {
+    kind,
     uri: asset.uri,
     width: asset.width,
     height: asset.height,
-    takenAt: exifDate(asset.exif),
-    coords: exifCoords(asset.exif),
+    takenAt: kind === "photo" ? exifDate(asset.exif) : null,
+    coords: kind === "photo" ? exifCoords(asset.exif) : null,
+    durationMs: kind === "video" ? (asset.duration ?? null) : null,
+    fileSize: asset.fileSize ?? null,
   };
 }
 
@@ -145,19 +197,58 @@ function exifDate(exif: Record<string, unknown> | null | undefined): string | nu
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-/**
- * Kopierer billedet ind i appens dokumentmappe, så det overlever, at kamerarullen
- * eller cachen ryddes, og kan uploades senere.
- */
-export function persistPhoto(sourceUri: string, postId: string): string {
+function mediaDir(): Directory {
   const dir = new Directory(Paths.document, "images");
   dir.create({ intermediates: true, idempotent: true });
+  return dir;
+}
+
+/**
+ * Kopierer billedet eller videoen ind i appens dokumentmappe, så det overlever, at
+ * kamerarullen eller cachen ryddes, og kan uploades senere.
+ */
+export function persistMedia(sourceUri: string, postId: string, kind: MediaKind = "photo"): string {
   const source = new File(sourceUri);
-  const ext = source.extension || ".jpg";
-  const dest = new File(dir, `${postId}${ext}`);
+  const ext = source.extension || (kind === "video" ? ".mp4" : ".jpg");
+  const dest = new File(mediaDir(), `${postId}${ext}`);
   if (dest.exists) dest.delete();
   source.copy(dest);
   return dest.uri;
+}
+
+/**
+ * Plakatramme til en video, gemt ved siden af den, så tidslinjen, galleriet og kortet
+ * kan vise videoen offline. Serveren laver sin egen ved upload. null, hvis det fejler
+ * (fx på web); så vises en neutral flade, indtil serverens plakat er hentet.
+ */
+export async function createVideoPoster(videoUri: string, postId: string): Promise<string | null> {
+  if (process.env.EXPO_OS === "web") return null;
+  // Lige efter kameraet kan Androids MediaMetadataRetriever fejle på en fil, der læses fint
+  // et øjeblik senere (set på emulatoren), så der prøves et par gange.
+  for (const delayMs of POSTER_RETRY_DELAYS_MS) {
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    try {
+      const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time: 0, quality: 0.8 });
+      const dest = new File(mediaDir(), `${postId}_poster.jpg`);
+      if (dest.exists) dest.delete();
+      new File(uri).move(dest);
+      return dest.uri;
+    } catch (e) {
+      if (delayMs === POSTER_RETRY_DELAYS_MS.at(-1)) {
+        console.warn("[media] kunne ikke lave plakatramme til videoen", e);
+      }
+    }
+  }
+  return null;
+}
+
+const POSTER_RETRY_DELAYS_MS = [0, 300, 1000];
+
+/** "0:12" – videoens længde til mærket på plakaten. */
+export function formatDuration(ms: number | null): string {
+  if (ms == null) return "";
+  const total = Math.max(1, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 export type LocationResult = { status: "ok"; coords: Coords } | { status: "denied" } | { status: "unavailable" };

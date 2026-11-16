@@ -1,4 +1,4 @@
-import type { CountryFacts, SyncStatus, Weather } from "@rejsedagbog/shared";
+import type { CountryFacts, MediaKind, SyncStatus, Weather } from "@rejsedagbog/shared";
 
 import type { LocalDb } from "./types";
 
@@ -32,11 +32,18 @@ export type LocalPost = {
   placeName: string | null;
   weather: Weather | null;
   countryCode: string | null;
-  /** Billedet i appens dokumentmappe (egne indlæg) */
+  /** "video" (Could) eller "photo". */
+  mediaKind: MediaKind;
+  /** Billedet eller videoen i appens dokumentmappe (egne indlæg). */
   localImageUri: string | null;
+  /** Plakatrammen til en egen video (lavet i appen, så den kan vises offline). */
+  localThumbUri: string | null;
+  /** Videoens længde. */
+  durationMs: number | null;
   remoteMediaId: string | null;
-  /** Signeret URL fra serveren (andres indlæg) */
+  /** Signeret URL fra serveren (andres indlæg): billedet eller videoen. */
   remoteImageUrl: string | null;
+  /** Thumbnail, eller plakatrammen for en video. */
   remoteThumbUrl: string | null;
   syncStatus: SyncStatus;
   lastError: string | null;
@@ -65,10 +72,27 @@ const toPost = ({ weatherJson, ...row }: PostRow): LocalPost => ({
   weather: parseWeather(weatherJson),
 });
 
-/** Billedet, der skal vises: lokal fil først (virker offline), ellers serverens. */
+export const isVideo = (post: Pick<LocalPost, "mediaKind">) => post.mediaKind === "video";
+
+/**
+ * Billedet, der skal vises: lokal fil først (virker offline), ellers serverens.
+ * For en video er det plakatrammen; selve videoen giver postVideoUri.
+ */
 export function postImageUri(post: LocalPost, size: "full" | "thumb" = "full"): string | null {
+  if (isVideo(post)) return post.localThumbUri ?? post.remoteThumbUrl;
   if (post.localImageUri) return post.localImageUri;
   return size === "thumb" ? (post.remoteThumbUrl ?? post.remoteImageUrl) : post.remoteImageUrl;
+}
+
+/** Videoen: den lokale fil (egne videoer, virker offline), ellers serverens signerede link. */
+export function postVideoUri(post: LocalPost): string | null {
+  if (!isVideo(post)) return null;
+  return post.localImageUri ?? post.remoteImageUrl;
+}
+
+/** Filer i appens mappe, der hører til indlægget (til oprydning). */
+export function localFilesOf(post: Pick<LocalPost, "localImageUri" | "localThumbUri">): string[] {
+  return [post.localImageUri, post.localThumbUri].filter((u): u is string => !!u);
 }
 
 /**
@@ -82,6 +106,7 @@ export function postImageSource(
 ): { uri: string; cacheKey?: string } | null {
   const uri = postImageUri(post, size);
   if (!uri) return null;
+  if (isVideo(post)) return uri === post.localThumbUri ? { uri } : { uri, cacheKey: `${post.id}-poster` };
   if (post.localImageUri) return { uri };
   const usingThumb = size === "thumb" && !!post.remoteThumbUrl;
   return { uri, cacheKey: `${post.id}-${usingThumb ? "thumb" : "full"}` };
@@ -167,15 +192,16 @@ export type NewLocalPost = Pick<
   | "weather"
   | "countryCode"
   | "localImageUri"
->;
+> &
+  Partial<Pick<LocalPost, "mediaKind" | "localThumbUri" | "durationMs">>;
 
 /** Gemmes altid først lokalt med status "lokal" – også når der er net (udviklingsplan afsnit 3). */
 export async function insertPost(db: LocalDb, post: NewLocalPost): Promise<void> {
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO posts (id, tripId, authorId, authorName, text, takenAt, lat, lon, placeName, weatherJson,
-                        countryCode, localImageUri, syncStatus, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lokal', ?, ?)`,
+                        countryCode, localImageUri, mediaKind, localThumbUri, durationMs, syncStatus, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lokal', ?, ?)`,
     post.id,
     post.tripId,
     post.authorId,
@@ -188,6 +214,9 @@ export async function insertPost(db: LocalDb, post: NewLocalPost): Promise<void>
     post.weather ? JSON.stringify(post.weather) : null,
     post.countryCode,
     post.localImageUri,
+    post.mediaKind ?? "photo",
+    post.localThumbUri ?? null,
+    post.durationMs ?? null,
     now,
     now,
   );

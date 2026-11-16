@@ -6,7 +6,7 @@ import { appRouter, type AppRouter } from "@rejsedagbog/api/routers/index";
 import type { MediaStorage } from "@rejsedagbog/api/storage";
 import type { createAuth } from "@rejsedagbog/auth";
 import type { Database } from "@rejsedagbog/db";
-import { UPLOAD_MAX_BYTES } from "@rejsedagbog/shared";
+import { VIDEO_MAX_BYTES } from "@rejsedagbog/shared";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { fromNodeHeaders } from "better-auth/node";
 import Fastify, { type FastifyLoggerOptions, type FastifyRequest } from "fastify";
@@ -87,8 +87,9 @@ export async function buildApp(deps: AppDeps) {
     }),
   });
 
+  // Grænsen her er videoens; billeder stoppes ved UPLOAD_MAX_BYTES i upload-ruten.
   await app.register(fastifyMultipart, {
-    limits: { fileSize: UPLOAD_MAX_BYTES, files: 1, fields: 5, fieldSize: 200 },
+    limits: { fileSize: VIDEO_MAX_BYTES, files: 1, fields: 5, fieldSize: 200 },
   });
 
   const getSession = (headers: Record<string, string | string[] | undefined>) =>

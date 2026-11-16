@@ -94,6 +94,8 @@ model Media {
   sizeBytes  Int
   width      Int?
   height     Int?
+  /// Kun for video.
+  durationMs Int?
   createdAt  DateTime @default(now())
 
   @@index([postId])

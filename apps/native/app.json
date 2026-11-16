@@ -55,8 +55,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Rejsepost bruger dine billeder, så du kan vælge et billede til et indlæg.",
-          "cameraPermission": "Rejsepost bruger kameraet, så du kan tage et billede til et indlæg.",
-          "microphonePermission": false
+          "cameraPermission": "Rejsepost bruger kameraet, så du kan tage et billede eller optage en video til et indlæg.",
+          "microphonePermission": "Rejsepost bruger mikrofonen, når du optager en video til et indlæg."
         }
       ],
       [
@@ -68,7 +68,9 @@
         }
       ],
       "./plugins/with-short-cmake-paths.js",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "expo-video",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -15,6 +15,8 @@ import {
   insertTrip,
   listPosts,
   markPostDeleted,
+  postImageUri,
+  postVideoUri,
   updatePostPosition,
   updatePostText,
   type LocalPost,
@@ -26,7 +28,7 @@ import {
   runSyncWith,
   type SyncDeps,
 } from "../../native/lib/sync/sync-engine";
-import { createTestApp, jpegWithGps, signUp, type TestContext, type TestUser } from "./helpers";
+import { createTestApp, jpegWithGps, signUp, videoWithLocation, type TestContext, type TestUser } from "./helpers";
 import { createLocalSqlite } from "./local-sqlite";
 
 /**
@@ -43,12 +45,14 @@ function makeDeps(baseUrl: string, user: TestUser, counters = { uploads: 0 }): S
   });
   return {
     api,
-    async uploadImage({ tripId, mediaId, localUri }) {
+    async uploadMedia({ tripId, mediaId, localUri, kind }) {
       counters.uploads++;
       const form = new FormData();
       form.append("tripId", tripId);
       form.append("mediaId", mediaId);
-      form.append("file", new Blob([await readFile(localUri)], { type: "image/jpeg" }), `${mediaId}.jpg`);
+      form.append("kind", kind);
+      const type = kind === "video" ? "video/mp4" : "image/jpeg";
+      form.append("file", new Blob([await readFile(localUri)], { type }), `${mediaId}.${kind === "video" ? "mp4" : "jpg"}`);
       let res: Response;
       try {
         res = await fetch(`${baseUrl}/api/uploads`, { method: "POST", body: form, headers: { cookie: user.cookie } });
@@ -202,7 +206,7 @@ describe("synkronisering (upload-kø og hentning)", () => {
     const id = await newLocalPost("Programfejl");
     const broken: SyncDeps = {
       ...makeDeps(baseUrl, sara),
-      uploadImage: async () => {
+      uploadMedia: async () => {
         throw new TypeError("Unsupported FormDataPart implementation");
       },
     };
@@ -218,7 +222,7 @@ describe("synkronisering (upload-kø og hentning)", () => {
     const id = await newLocalPost("Tunnel");
     const offline: SyncDeps = {
       ...makeDeps(baseUrl, sara),
-      uploadImage: async () => {
+      uploadMedia: async () => {
         throw new TypeError("Network request failed");
       },
     };
@@ -447,6 +451,64 @@ describe("synkronisering (upload-kø og hentning)", () => {
     expect(result.failed).toBe(1);
     expect(await localPost(jonasPostId)).toMatchObject({ text: "Jonas' billede", pendingOp: null });
     expect((await t.db.post.findUniqueOrThrow({ where: { id: jonasPostId } })).deletedAt).toBeNull();
+  });
+
+  it("video (Could): optaget offline, uploades som video, og en anden i gruppen får den med plakat og længde", async () => {
+    const id = randomUUID();
+    const localImageUri = path.join(dir, `${id}.mp4`);
+    const localThumbUri = path.join(dir, `${id}_poster.jpg`);
+    await writeFile(localImageUri, await videoWithLocation());
+    await writeFile(localThumbUri, await jpegWithGps(320, 240));
+    await insertPost(local, {
+      id,
+      tripId,
+      authorId: sara.id,
+      authorName: "Sara",
+      text: "Trevi i bevægelse",
+      takenAt: new Date().toISOString(),
+      lat: null,
+      lon: null,
+      placeName: null,
+      weather: null,
+      countryCode: "IT",
+      localImageUri,
+      mediaKind: "video",
+      localThumbUri,
+      durationMs: 2000,
+    });
+
+    // Offline: venter i køen som alle andre indlæg.
+    await runSyncWith(makeDeps(DEAD_URL, sara), local, { pull: false, ignoreBackoff: true });
+    expect(await localPost(id)).toMatchObject({ syncStatus: "lokal", mediaKind: "video" });
+
+    const counters = { uploads: 0 };
+    await runSyncWith(makeDeps(baseUrl, sara, counters), local, { pull: true, ignoreBackoff: true });
+    expect(counters.uploads).toBe(1);
+    const mine = (await localPost(id))!;
+    expect(mine).toMatchObject({ syncStatus: "synkroniseret", mediaKind: "video", durationMs: 2000 });
+    // Egne videoer vises fra telefonens egne filer, også offline.
+    expect(postVideoUri(mine)).toBe(localImageUri);
+    expect(postImageUri(mine)).toBe(localThumbUri);
+    expect(objectKeysFor(id).sort()).toEqual([`trips/${tripId}/${id}.mp4`, `trips/${tripId}/${id}_thumb.jpg`]);
+    expect(await t.db.media.findUniqueOrThrow({ where: { id } })).toMatchObject({ kind: "video", postId: id });
+
+    // Jonas' telefon (medlem af rejsen) henter videoen med serverens plakat.
+    const jonasLocal = createLocalSqlite();
+    await runSyncWith(makeDeps(baseUrl, jonas), jonasLocal, { pull: true, ignoreBackoff: true });
+    const theirs = (await listPosts(jonasLocal, tripId)).find((p) => p.id === id)!;
+    expect(theirs).toMatchObject({ mediaKind: "video", durationMs: 2000, localImageUri: null });
+    expect(postVideoUri(theirs)).toMatch(new RegExp(`${id}\\.mp4\\?`));
+    expect(postImageUri(theirs, "thumb")).toMatch(new RegExp(`${id}_thumb\\.jpg\\?`));
+
+    // Sletning fjerner videoen og plakaten i bucket'en og begge lokale filer.
+    await markPostDeleted(local, id);
+    const deleted: string[] = [];
+    await runSyncWith({ ...makeDeps(baseUrl, sara), deleteFile: (u: string) => void deleted.push(u) }, local, {
+      pull: false,
+      ignoreBackoff: true,
+    });
+    expect(deleted.sort()).toEqual([localImageUri, localThumbUri].sort());
+    expect(objectKeysFor(id)).toHaveLength(0);
   });
 });
 
