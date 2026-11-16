@@ -59,28 +59,29 @@ export const radius = { sm: 6, md: 10, lg: 14, xl: 24, pill: 999 } as const;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
 /**
- * Fonte, der hentes i app/_layout.tsx. Overskrifter er Fraunces (serif), små
- * versal-etiketter er IBM Plex Mono; brødtekst bruger telefonens egen skrift.
+ * Fonte, der hentes i app/_layout.tsx. Overskrifter og indlæggenes tekst er
+ * Source Serif 4 (opret, ingen kursiv), små versal-etiketter og koder er Barlow
+ * Semi Condensed som tryk på et frimærke; brødtekst bruger telefonens egen skrift.
  * Med egne fonte vælges vægten med navnet, ikke med fontWeight (Android).
  */
 export const fonts = {
-  display: "Fraunces_600SemiBold",
-  displayItalic: "Fraunces_400Regular_Italic",
-  mono: "IBMPlexMono_500Medium",
+  display: "SourceSerif4_600SemiBold",
+  serif: "SourceSerif4_400Regular",
+  label: "BarlowSemiCondensed_600SemiBold",
 } as const;
 
 /** Typografi til overskrifter og etiketter. Brug sammen med en farve fra paletten. */
 export const typo = {
   /** "REJSEPOST", "STED" – små versaler over en overskrift eller et felt. */
-  eyebrow: { fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1.8 },
+  eyebrow: { fontFamily: fonts.label, fontSize: 12, letterSpacing: 1.4 },
   /** Skærmens titel, fx rejsens navn. */
-  hero: { fontFamily: fonts.display, fontSize: 32, letterSpacing: -0.5, lineHeight: 38 },
+  hero: { fontFamily: fonts.display, fontSize: 32, letterSpacing: -0.3, lineHeight: 38 },
   /** Titel i et indlæg eller et ark. */
-  title: { fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.3, lineHeight: 30 },
+  title: { fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.2, lineHeight: 30 },
   /** Dag-overskrift, kort-titel. */
   heading: { fontFamily: fonts.display, fontSize: 20, lineHeight: 26 },
   /** Indlæggets tekst, skrevet som på et postkort. */
-  note: { fontFamily: fonts.displayItalic, fontSize: 16, lineHeight: 23 },
+  note: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 24 },
 } as const satisfies Record<string, TextStyle>;
 
 export const NAV_THEME = { light, dark };

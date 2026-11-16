@@ -121,7 +121,7 @@ export default function InviteScreen() {
             <Text
               selectable
               accessibilityLabel={`Invitationskode ${trip.inviteCode.split("").join(" ")}`}
-              style={{ color: p.text, fontFamily: fonts.mono, fontSize: 38, letterSpacing: 6 }}
+              style={{ color: p.text, fontFamily: fonts.label, fontSize: 38, letterSpacing: 6 }}
             >
               {trip.inviteCode}
             </Text>

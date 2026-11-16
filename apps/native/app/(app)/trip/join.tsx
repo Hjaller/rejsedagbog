@@ -82,7 +82,7 @@ export default function JoinTripScreen() {
           maxLength={INVITE_CODE_LENGTH + 2}
           returnKeyType="go"
           onSubmitEditing={join}
-          style={{ fontSize: 24, letterSpacing: 6, fontFamily: fonts.mono }}
+          style={{ fontSize: 24, letterSpacing: 6, fontFamily: fonts.label }}
         />
       </ScrollView>
 

@@ -65,7 +65,7 @@ export default function PostcardScreen() {
       contentContainerStyle={{ padding: space.lg, gap: space.lg, alignItems: "center" }}
     >
       <View
-        style={{ transform: [{ rotate: "-1deg" }], boxShadow: "0 6px 18px rgba(60, 40, 20, 0.18)" }}
+        style={{ boxShadow: "0 6px 18px rgba(60, 40, 20, 0.18)" }}
         accessible
         accessibilityLabel={`Postkort fra ${post.data.placeName ?? "rejsen"}${post.data.text ? `: ${post.data.text}` : ""}`}
       >
@@ -226,7 +226,7 @@ function Postcard({
         </View>
       </View>
 
-      <Text style={[typo.eyebrow, { color: CARD.muted, fontSize: 9, textAlign: "center", fontFamily: fonts.mono }]}>
+      <Text style={[typo.eyebrow, { color: CARD.muted, fontSize: 9, textAlign: "center", fontFamily: fonts.label }]}>
         REJSEPOST
       </Text>
     </View>

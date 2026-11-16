@@ -1,5 +1,5 @@
-import { Fraunces_400Regular_Italic, Fraunces_600SemiBold } from "@expo-google-fonts/fraunces";
-import { IBMPlexMono_500Medium } from "@expo-google-fonts/ibm-plex-mono";
+import { BarlowSemiCondensed_600SemiBold } from "@expo-google-fonts/barlow-semi-condensed";
+import { SourceSerif4_400Regular, SourceSerif4_600SemiBold } from "@expo-google-fonts/source-serif-4";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -37,7 +37,7 @@ export default function RootLayout() {
   const { data: session, isPending } = authClient.useSession();
   const signedIn = !!session?.user;
   // Overskrifternes fonte (redesign D). Fejler de, bruges telefonens skrift i stedet.
-  const [fontsLoaded, fontError] = useFonts({ Fraunces_600SemiBold, Fraunces_400Regular_Italic, IBMPlexMono_500Medium });
+  const [fontsLoaded, fontError] = useFonts({ SourceSerif4_600SemiBold, SourceSerif4_400Regular, BarlowSemiCondensed_600SemiBold });
   const ready = !isPending && (fontsLoaded || !!fontError);
 
   useEffect(() => {

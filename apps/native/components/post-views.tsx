@@ -449,7 +449,6 @@ export function PostDetail({
           padding: 10,
           paddingBottom: 30,
           boxShadow: "0 2px 10px rgba(60, 40, 20, 0.14)",
-          transform: [{ rotate: "-1deg" }],
           marginHorizontal: space.xs,
         }}
       >
