@@ -203,11 +203,11 @@ export async function getCurrentCoords({
   maxAgeMs = SCREEN_OPEN_MAX_AGE_MS,
   request = true,
 }: { maxAgeMs?: number; request?: boolean } = {}): Promise<LocationResult> {
-  const perm = request
-    ? await Location.requestForegroundPermissionsAsync()
-    : await Location.getForegroundPermissionsAsync();
-  if (!perm.granted) return { status: "denied" };
   try {
+    const perm = request
+      ? await Location.requestForegroundPermissionsAsync()
+      : await Location.getForegroundPermissionsAsync();
+    if (!perm.granted) return { status: "denied" };
     const last = await Location.getLastKnownPositionAsync({ maxAge: maxAgeMs, requiredAccuracy: 200 });
     // Uden dialogen om Googles "Location Accuracy": den ville dukke op, hver gang skærmen åbnes,
     // og et nej ville give indlægget uden position, selvom GPS'en virker.

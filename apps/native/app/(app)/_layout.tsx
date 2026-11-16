@@ -9,7 +9,7 @@ import { useSyncScheduler } from "@/lib/sync/sync-scheduler";
 import { fonts, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
-export const unstable_settings = { initialRouteName: "(tabs)" };
+export const unstable_settings = { anchor: "(tabs)" };
 
 function Bootstrap() {
   const { db, user } = useLocalDb();

@@ -22,13 +22,22 @@ type Row =
 function buildRows(posts: LocalPost[], trips: LocalTrip[]): Row[] {
   const tripsById = new Map(trips.map((t) => [t.id, t]));
   const rows: Row[] = [];
+  // Med "Alle rejser" kan to rejser have billeder fra samme dag, så samme rejsedag kan
+  // komme igen længere nede. Overskriftens key tæller derfor, hvor mange gange den er set.
+  const seen = new Map<string, number>();
   let current = "";
   for (const post of posts) {
     const date = new Date(post.takenAt);
     const key = `${post.tripId}-${toIsoDate(date)}`;
     if (key !== current) {
       current = key;
-      rows.push({ type: "day", key: `d-${key}`, ...dayHeading(date, tripsById.get(post.tripId)) });
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      rows.push({
+        type: "day",
+        key: n === 0 ? `d-${key}` : `d-${key}-${n}`,
+        ...dayHeading(date, tripsById.get(post.tripId)),
+      });
     }
     rows.push({ type: "post", key: post.id, post });
   }
