@@ -1,0 +1,47 @@
+# Bruges af EAS Build i stedet for .gitignore-filerne, når projektet pakkes og uploades.
+# Skal derfor selv udelukke alt det, .gitignore-filerne udelukker.
+
+# Agent-værktøjer: .claude/skills er symlinks, som Windows ikke kan kopiere uden
+# administratorrettigheder ("EPERM: operation not permitted, symlink").
+/.claude
+/.agents
+/.cursor
+/.vscode
+/.mcp.json
+/skills-lock.json
+
+# Ikke nødvendigt for at bygge appen
+/docs
+/*.pdf
+/docker-compose.yml
+**/Dockerfile
+
+# Afhængigheder og genererede filer
+node_modules
+.turbo
+.expo
+.next
+dist
+build
+coverage
+*.tsbuildinfo
+*.log
+.data
+/apps/native/android
+/apps/native/ios
+/apps/*/src/env.ts
+/packages/*/src/env.ts
+/packages/db/prisma/generated
+/apps/server/prisma/generated
+
+# Hemmeligheder og lokale indstillinger
+.env
+.env.*
+!.env.schema
+!.env.example
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision

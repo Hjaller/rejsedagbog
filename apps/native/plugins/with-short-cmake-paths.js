@@ -52,5 +52,7 @@ function withCmakeVersion(config) {
 }
 
 module.exports = function withShortCmakePaths(config) {
+  // Kun et Windows-problem. På EAS (Linux/macOS) bruges byggemaskinens egen CMake.
+  if (process.platform !== "win32") return config;
   return withCmakeVersion(withObjectPathMax(config));
 };

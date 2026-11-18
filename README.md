@@ -92,6 +92,42 @@ Data følger ikke med git: den lokale database og uploadede billeder findes kun 
 
 Efter ændringer i Prisma-skemaet: `npm run db:migrate` og `npm run db:generate`.
 
+## Byg appen til iOS og Android (EAS Build)
+
+Appen bygges i skyen med [EAS Build](https://docs.expo.dev/build/introduction/), så iOS kan bygges uden en Mac. Profilerne står i `apps/native/eas.json`, og alle kommandoer køres fra `apps/native`.
+
+| Profil | Resultat | Server |
+|---|---|---|
+| `development` | Development build (kræver Metro på computeren). `development-simulator` er det samme til iOS-simulatoren. | `apps/native/.env` |
+| `preview` | Android: APK til direkte installation. iOS: ad hoc-build til registrerede enheder. | `https://api.example.com` |
+| `production` | Android: AAB til Google Play. iOS: build til TestFlight/App Store. Buildnummeret tælles selv op. | `https://api.example.com` |
+
+**Første gang** (kræver en Expo-konto):
+
+```bash
+npm install -g eas-cli
+cd apps/native
+eas login
+eas init          # opretter EAS-projektet og skriver projectId i app.json
+```
+
+**Byg:**
+
+```bash
+eas build --profile preview --platform android      # APK til brugertest
+eas build --profile preview --platform ios          # kræver Apple Developer-konto og `eas device:create`
+eas build --profile production --platform all       # til butikkerne
+eas submit --profile production --platform ios      # upload til TestFlight
+eas submit --profile production --platform android  # upload til Google Play (intern test)
+```
+
+EAS opretter og gemmer selv signeringsnøglerne (Android keystore, iOS-certifikat og provisioning profile) ved første build. iOS kræver medlemskab af Apple Developer Program, og Google Play kræver en udviklerkonto, hvor den første AAB uploades i hånden i Play Console.
+
+- **App-id:** `dev.leth.rejsepost` på begge platforme (`app.json`). Det kan ikke ændres, når appen først ligger i en butik.
+- **Server-adresse:** `.env` er gitignored og kommer ikke med op til EAS. `EXPO_PUBLIC_SERVER_URL` står derfor i `eas.json` under hver profil og bages ind i appen, når den bygges.
+- **Ikoner:** tegnes af `npm run icons -w native` (`apps/native/scripts/generate-icons.mjs`).
+- **Tjek før et build:** `npx expo-doctor` og `npm run check-types`.
+
 ## UI Customization
 
 React web apps in this stack share shadcn/ui primitives through `packages/ui`.

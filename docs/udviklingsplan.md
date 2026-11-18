@@ -9,7 +9,7 @@ Planen følger kravspecifikationens tre uger og MoSCoW-prioritering. Must-krav u
 
 | # | Kravspec siger | Ændres til | Begrundelse / konsekvens |
 |---|---|---|---|
-| 1 | Billeder i S3-kompatibel lagring **(MinIO)**, kørt i Docker Compose | **Hetzner Object Storage** (ekstern, administreret S3-kompatibel lagring, se 0.1) | Ingen storage-container i Compose. Backend taler S3-API via AWS SDK v3 med konfigurerbart endpoint, så udbyderen kan skiftes alene via miljøvariabler. Der bruges separate buckets til dev og prod. |
+| 1 | Billeder i S3-kompatibel lagring **(MinIO)**, kørt i Docker Compose | **Hetzner Object Storage** (ekstern, administreret S3-kompatibel lagring, se 0.1) | Ingen storage-container i Compose. Backend taler S3-API via AWS SDK v3 med konfigurerbart endpoint, så udbyderen kan skiftes alene via miljøvariabler. Dev og prod bruger samme bucket (besluttet 18. nov. 2026, se 0.1). |
 | 2 | Eget REST-API i Fastify med JSON-schema-validering | **tRPC på Fastify** med Zod-validering (sådan er scaffoldet sat op) + én almindelig REST-route til billedupload (multipart) | Typerne deles automatisk mellem app, web og backend, og Zod giver samme inputvalidering. tRPC håndterer ikke filupload godt, derfor er upload en separat Fastify-route. **Besluttet:** tRPC beholdes til alt andet end filer, billedupload går gennem en Fastify-route, og teksten i kravspec opdateres. |
 | 3 | Backend, database og lagring kører i Docker Compose | Compose indeholder `server`, `web` og **`db` (PostgreSQL)**. Scaffoldet mangler db-servicen, så den tilføjes. | Lagring ligger nu uden for Compose (punkt 1). |
 | 4 | – | Scaffoldets drawer- og tabs-navigation i `apps/native` erstattes af responsiv navigation (bundbar/sidebar) | Navigationen skal følge de tre layouts i afsnit 4 i kravspec. |
@@ -31,8 +31,8 @@ Koden er stadig udbyder-neutral (AWS SDK v3), så et skift kun kræver nye milj�
 
 - **Placering:** en af Hetzners EU-placeringer: `fsn1` (Falkenstein), `nbg1` (Nürnberg) eller `hel1` (Helsinki). Billederne er persondata, så de bliver i EU.
 - **URL'er:** virtual-hosted (`S3_FORCE_PATH_STYLE=false`), dvs. `https://<bucket>.fsn1.your-objectstorage.com/<nøgle>`.
-- **Buckets:** private, én til dev og én til prod. Bucket-navne er unikke på tværs af alle Hetzner-kunder, så der skal måske et suffiks på.
-- **Nøgler:** S3-nøgler oprettes under *Security → S3 credentials* og gælder for alle buckets i Hetzner-projektet. Skal en lækket dev-nøgle ikke kunne røre prod-billederne, skal prod-bucket'en ligge i sit eget Hetzner-projekt med egne nøgler.
+- **Buckets:** én privat bucket (`rejsedagbog` i `hel1`), som både udvikling og drift bruger (besluttet 18. nov. 2026). Det er nok i projektets skala. Objektnøglerne indeholder rejsens UUID, så dev- og prod-data ikke kolliderer.
+- **Nøgler:** S3-nøgler oprettes under *Security → S3 credentials* og gælder for alle buckets i Hetzner-projektet. Fordi bucket'en er fælles, kan nøglen i udviklingsmiljøet også læse og slette billederne i drift. Skal det undgås senere, kræver det en separat prod-bucket i eget Hetzner-projekt med egne nøgler; det er kun et env-skift.
 - **Checksums:** SDK v3 sender som standard nye checksum-headere, som ikke alle S3-kompatible udbydere accepterer. Klienten er sat til `WHEN_REQUIRED` (`apps/server/src/storage.ts`).
 
 Miljøvariabler i `apps/server/.env` (se `.env.schema`; nøglerne er `@sensitive`):
@@ -40,7 +40,7 @@ Miljøvariabler i `apps/server/.env` (se `.env.schema`; nøglerne er `@sensitive
 ```
 S3_ENDPOINT=https://fsn1.your-objectstorage.com
 S3_REGION=fsn1
-S3_BUCKET=rejsepost-dev-xxxx        # rejsepost-prod-xxxx i drift
+S3_BUCKET=rejsedagbog               # samme bucket i udvikling og drift
 S3_ACCESS_KEY_ID=
 S3_SECRET_ACCESS_KEY=
 S3_FORCE_PATH_STYLE=false
@@ -548,7 +548,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - **Web:** video kan ikke optages, postkort kan ikke deles, og albummet tager kun billeder.
 
 **Mangler (samlet pr. 16. nov.)**
-- **Deploy:** serveren skal deployes, før en ny APK laves. Den skal have `posts.update`-positionen, `enrich.searchPlaces` og video-uploaden (ffmpeg og migrationen `media_duration`). Skift til en separat prod-bucket (gerne i eget Hetzner-projekt med egne nøgler).
+- ~~**Deploy:** serveren skal deployes, før en ny APK laves. Skift til en separat prod-bucket.~~ Lavet/afgjort, se 18. nov.
 - **Should 4) Next.js-webvisning:** `apps/web` har stadig kun scaffoldets login og dashboard. Den skal vise rejseoversigt, tidslinje og galleri som master/detail plus et kort med Leaflet og OSM, og den skal kun kunne læse.
 - **Brugertest:** byg en APK med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`, test med mindst én medstuderende, og lav og dokumentér rettelserne.
 - **Testmatrix (afsnit 7):**
@@ -567,3 +567,25 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
   - En rejse over datolinjen giver et forkert kortudsnit.
 
 **Næste skridt:** deploy serveren, og byg derefter APK'en til brugertesten. Should 4) webvisningen laves sideløbende.
+
+### 18. nov. 2026: deploy og bucket afklaret
+
+- **Serveren er deployet:** Coolify har deployet `ca6e244` (16. nov.), så API'et har `posts.update`-positionen, `enrich.searchPlaces` og video-uploaden. APK'en til brugertesten kan bygges.
+- **Én bucket til dev og prod** (afsnit 0.1): der oprettes ikke en separat prod-bucket. Konsekvensen er, at nøglen i udviklingsmiljøet også kan røre billederne i drift.
+
+**Mangler:** resten af listen fra 16. nov. (webvisning, APK og brugertest, testmatrix, README, kravspecifikation, præsentation).
+
+### 18. nov. 2026: klar til build til iOS og Android (EAS)
+
+**Lavet**
+- **EAS Build:** `apps/native/eas.json` med profilerne `development`, `development-simulator`, `preview` (APK / ad hoc) og `production` (AAB / App Store). `preview` og `production` peger på `https://api.example.com`; adressen står i `eas.json`, fordi `.env` ikke kommer med op til EAS. Buildnumre styres af EAS (`appVersionSource: remote`, `autoIncrement`). Vejledning i README.
+- **App-id:** `com.anonymous.rejsedagbog` er skiftet til `dev.leth.rejsepost` på begge platforme. Telefonen ser det som en ny app, så et gammelt dev-build skal afinstalleres, og dets lokale data følger ikke med.
+- **Ikon og splash:** Expos standardikon er erstattet af et frimærke med poststempel i appens farver (`scripts/generate-icons.mjs`). Splash-skærmen bruger papirfarven (mørk: `#161412`).
+- **iOS:** `ITSAppUsesNonExemptEncryption = false` (appen bruger kun HTTPS, så TestFlight ikke spørger om eksportregler ved hvert build). Tilladelsestekster for "altid"-position, bevægelse og Face ID er slået fra, fordi appen ikke bruger dem; teksten for præcis position er på dansk.
+- **Pakker:** Expo-pakkerne er opdateret til de versioner, SDK 58 forventer (`expo install --fix`). `expo-doctor` består 20/20.
+- **`with-short-cmake-paths`** gør nu kun noget på Windows, så EAS' byggemaskiner bruger deres egen CMake.
+
+**Mangler**
+- `eas init` (opretter EAS-projektet på en Expo-konto og skriver `projectId` i `app.json`) og det første build pr. platform.
+- iOS kræver Apple Developer Program; Google Play kræver en udviklerkonto.
+- Butiksmateriale (skærmbilleder, beskrivelse, privatlivspolitik) er ikke lavet.
