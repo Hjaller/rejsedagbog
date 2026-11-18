@@ -28,7 +28,7 @@ export default function ProfileScreen() {
   const waiting = pending.data ?? 0;
   const tripList = trips.data ?? [];
   const postTotal = Object.values(counts.data ?? {}).reduce((a, b) => a + b, 0);
-  const countries = new Set(tripList.map((t) => t.countryCode)).size;
+  const countries = new Set(tripList.flatMap((t) => t.countryCodes)).size;
 
   const signOut = async () => {
     setSigningOut(true);

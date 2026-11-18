@@ -118,7 +118,7 @@ async function pushTrips(deps: SyncDeps, db: LocalDb) {
         deps.api.trips.create.mutate({
           id: trip.id,
           name: trip.name,
-          countryCode: trip.countryCode,
+          countryCodes: trip.countryCodes,
           startDate: trip.startDate,
           endDate: trip.endDate,
         }),

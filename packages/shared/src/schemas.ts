@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { INVITE_CODE_PATTERN, POST_TEXT_MAX, TRIP_NAME_MAX } from "./constants";
+import { INVITE_ACCESS, INVITE_CODE_PATTERN, POST_TEXT_MAX, TRIP_COUNTRIES_MAX, TRIP_NAME_MAX } from "./constants";
 import { COUNTRY_NAMES_DA } from "./countries";
 
 /**
@@ -16,12 +16,32 @@ export const countryCode = z
   .regex(/^[A-Z]{2}$/, "Ugyldig landekode")
   .refine((c) => c in COUNTRY_NAMES_DA, "Ukendt land");
 
+/** Rejsens lande i den rækkefølge, de besøges. Dubletter fjernes. */
+export const tripCountryCodes = z
+  .array(countryCode)
+  .min(1, "Vælg mindst ét land")
+  .max(TRIP_COUNTRIES_MAX, `Højst ${TRIP_COUNTRIES_MAX} lande`)
+  .transform((codes) => [...new Set(codes)]);
+
 const tripFields = {
   name: z.string().trim().min(1, "Rejsen skal have et navn").max(TRIP_NAME_MAX),
-  countryCode,
+  countryCodes: tripCountryCodes.optional(),
+  /** Ældre app-versioner sender ét land i stedet for `countryCodes`. */
+  countryCode: countryCode.optional(),
   startDate: isoDate,
   endDate: isoDate,
 };
+
+const hasCountry = (v: { countryCodes?: string[]; countryCode?: string }) => !!v.countryCodes || !!v.countryCode;
+const hasCountryMessage = { message: "Vælg mindst ét land", path: ["countryCodes"] };
+
+/** Samler de to måder at angive land på til én liste. */
+function withCountryCodes<T extends { countryCodes?: string[]; countryCode?: string }>(
+  v: T,
+): Omit<T, "countryCodes" | "countryCode"> & { countryCodes: string[] } {
+  const { countryCodes, countryCode: single, ...rest } = v;
+  return { ...rest, countryCodes: countryCodes ?? (single ? [single] : []) };
+}
 
 const endNotBeforeStart = (v: { startDate: string; endDate: string }) => v.endDate >= v.startDate;
 const endNotBeforeStartMessage = {
@@ -32,12 +52,16 @@ const endNotBeforeStartMessage = {
 /** `id` genereres i appen, så en rejse oprettet offline kan synkroniseres idempotent. */
 export const tripCreateInput = z
   .object({ id: z.uuid(), ...tripFields })
-  .refine(endNotBeforeStart, endNotBeforeStartMessage);
+  .refine(hasCountry, hasCountryMessage)
+  .refine(endNotBeforeStart, endNotBeforeStartMessage)
+  .transform(withCountryCodes);
 export type TripCreateInput = z.infer<typeof tripCreateInput>;
 
 export const tripUpdateInput = z
   .object({ tripId: z.uuid(), ...tripFields })
-  .refine(endNotBeforeStart, endNotBeforeStartMessage);
+  .refine(hasCountry, hasCountryMessage)
+  .refine(endNotBeforeStart, endNotBeforeStartMessage)
+  .transform(withCountryCodes);
 export type TripUpdateInput = z.infer<typeof tripUpdateInput>;
 
 export const tripIdInput = z.object({ tripId: z.uuid() });
@@ -90,15 +114,23 @@ export const inviteCode = z
 
 export const inviteJoinInput = z.object({ code: inviteCode });
 
+/** `access` vælger koden: "member" (kan lægge op, standard) eller "viewer" (kan kun se). */
+export const inviteCodeInput = z.object({ tripId: z.uuid(), access: z.enum(INVITE_ACCESS).default("member") });
+
 export const enrichPreviewInput = z.object({
   lat: latitude,
   lon: longitude,
   takenAt: isoDateTime,
 });
 
-/** Søgning efter et sted at sætte på et indlæg. `countryCode` foretrækker rejsens land. */
+/** Søgning efter et sted at sætte på et indlæg. `countryCodes` foretrækker rejsens lande. */
 export const placeSearchInput = z.object({
   query: z.string().trim().min(2, "Skriv mindst 2 tegn").max(120, "Højst 120 tegn"),
+  countryCodes: z
+    .array(z.string().regex(/^[A-Za-z]{2}$/))
+    .max(TRIP_COUNTRIES_MAX)
+    .nullish(),
+  /** Ældre app-versioner sender ét land. */
   countryCode: z
     .string()
     .regex(/^[A-Za-z]{2}$/)

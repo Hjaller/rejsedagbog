@@ -19,7 +19,7 @@ export default function NewPostSheet() {
   const p = usePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { defaultTrip, isLoading } = useActiveTrip();
+  const { defaultTrip, trips, isLoading } = useActiveTrip();
 
   const open = (source: "camera" | "video" | "album") => router.replace({ pathname: "/post/new", params: { source } });
 
@@ -48,7 +48,9 @@ export default function NewPostSheet() {
       {!isLoading && !defaultTrip ? (
         <View style={{ gap: space.md }}>
           <Text style={{ color: p.textMuted, fontSize: 15, lineHeight: 21 }}>
-            Indlæg hører til en rejse. Opret en rejse først, eller tilslut en grupperejse med en kode.
+            {trips.length > 0
+              ? "De rejser, du har, er delt med dig, så du kan se dem, men ikke lægge noget op. Opret din egen rejse, eller tilslut en grupperejse med en invitationskode."
+              : "Indlæg hører til en rejse. Opret en rejse først, eller tilslut en grupperejse med en kode."}
           </Text>
           <View style={{ flexDirection: "row", gap: space.md }}>
             <Button

@@ -7,6 +7,20 @@ export const TRIP_NAME_MAX = 80;
 export const INVITE_CODE_LENGTH = 6;
 export const INVITE_CODE_PATTERN = /^[A-Z0-9]{6}$/;
 
+/**
+ * Roller på en rejse. En "viewer" har fået rejsen delt til visning: kan se indlæg,
+ * billeder og gruppen, men ikke lægge noget op.
+ */
+export const TRIP_ROLES = ["owner", "member", "viewer"] as const;
+export type TripRole = (typeof TRIP_ROLES)[number];
+
+/** Hvad en kode giver adgang til: at være med ("member") eller kun at se ("viewer"). */
+export const INVITE_ACCESS = ["member", "viewer"] as const;
+export type InviteAccess = (typeof INVITE_ACCESS)[number];
+
+/** En rundrejse kan gå gennem flere lande. */
+export const TRIP_COUNTRIES_MAX = 20;
+
 /** Grænser for billedupload, håndhæves på serveren. */
 export const UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
 // HEIC understøttes ikke af sharp-binærerne; appen sender JPEG (komprimeret i image-picker).

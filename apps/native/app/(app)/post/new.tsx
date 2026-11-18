@@ -26,7 +26,7 @@ import { TextField } from "@/components/text-field";
 import { formatTime, tripDay } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useActiveTrip, useCreatePost, useDeletePost, useUpdatePostText } from "@/lib/local-db/queries";
-import { getMeta, getPost, setMeta } from "@/lib/local-db/repo";
+import { getMeta, getPost, setMeta, singleCountry } from "@/lib/local-db/repo";
 import type { MediaKind } from "@rejsedagbog/shared";
 
 import {
@@ -116,7 +116,8 @@ export default function NewPostScreen() {
   const recovered = params.recovered;
   const initialSource: Source = params.source === "album" ? "album" : params.source === "video" ? "video" : "camera";
   const { db, user } = useLocalDb();
-  const { trip: activeTrip, defaultTrip, showAll, trips, setActiveTrip, isLoading } = useActiveTrip();
+  // Kun rejser, man kan lægge op på: ikke dem, der er delt til visning.
+  const { trip: activeTrip, defaultTrip, showAll, postableTrips: trips, setActiveTrip, isLoading } = useActiveTrip();
   const createPost = useCreatePost();
   const deletePost = useDeletePost();
   const updateText = useUpdatePostText();
@@ -238,7 +239,7 @@ export default function NewPostScreen() {
           // Sted og vejr sætter serveren ved upload.
           placeName: null,
           weather: null,
-          countryCode: trip.countryCode ?? null,
+          countryCode: singleCountry(trip),
           localImageUri,
           mediaKind: item.kind,
           localThumbUri,
@@ -425,7 +426,7 @@ export default function NewPostScreen() {
           lon: post.coords?.lon ?? null,
           placeName: null,
           weather: null,
-          countryCode: target.countryCode ?? null,
+          countryCode: singleCountry(target),
           localImageUri,
           mediaKind: post.kind,
           localThumbUri,
@@ -582,7 +583,7 @@ function SavedView({
   posts: SavedPost[];
   source: Source;
   notice: string | null;
-  trip: { id: string; name: string; startDate: string; endDate: string; countryCode: string | null };
+  trip: { id: string; name: string; startDate: string; endDate: string };
   trips: { id: string; name: string }[];
   locationPerm: LocationPermission;
   text: string;

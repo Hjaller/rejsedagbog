@@ -1,4 +1,4 @@
-import type { MediaKind, Weather } from "@rejsedagbog/shared";
+import type { MediaKind, TripRole, Weather } from "@rejsedagbog/shared";
 
 import type { MediaStorage } from "./storage";
 
@@ -9,13 +9,20 @@ import type { MediaStorage } from "./storage";
 export type TripDto = {
   id: string;
   name: string;
+  /** Rejsens lande i den rækkefølge, de besøges. Mindst ét. */
+  countryCodes: string[];
+  /** Det første land. Kun til ældre app-versioner; brug `countryCodes`. */
   countryCode: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;
-  role: "owner" | "member";
+  /** "viewer" har fået rejsen delt og kan kun se. */
+  role: TripRole;
+  /** Alle med adgang, også dem, der kun kan se. */
   memberCount: number;
   /** Kun med for ejeren. */
   inviteCode: string | null;
+  /** Koden til deling (kun visning). Kun med for ejeren. */
+  viewCode: string | null;
   updatedAt: string;
 };
 
@@ -23,7 +30,7 @@ export type TripDto = {
 export type TripMemberDto = {
   id: string;
   name: string;
-  role: "owner" | "member";
+  role: TripRole;
   joinedAt: string;
 };
 
@@ -61,10 +68,11 @@ export type PostDto = {
 export const tripSelect = {
   id: true,
   name: true,
-  countryCode: true,
+  countryCodes: true,
   startDate: true,
   endDate: true,
   inviteCode: true,
+  viewCode: true,
   ownerId: true,
   updatedAt: true,
   _count: { select: { members: true } },
@@ -76,24 +84,27 @@ export function toTripDto(
   trip: {
     id: string;
     name: string;
-    countryCode: string;
+    countryCodes: string[];
     startDate: Date;
     endDate: Date;
     inviteCode: string | null;
+    viewCode: string | null;
     updatedAt: Date;
     _count: { members: number };
   },
-  role: "owner" | "member",
+  role: TripRole,
 ): TripDto {
   return {
     id: trip.id,
     name: trip.name,
-    countryCode: trip.countryCode,
+    countryCodes: trip.countryCodes,
+    countryCode: trip.countryCodes[0] ?? "",
     startDate: toDateOnly(trip.startDate),
     endDate: toDateOnly(trip.endDate),
     role,
     memberCount: trip._count.members,
     inviteCode: role === "owner" ? trip.inviteCode : null,
+    viewCode: role === "owner" ? trip.viewCode : null,
     updatedAt: trip.updatedAt.toISOString(),
   };
 }

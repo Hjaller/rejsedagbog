@@ -166,14 +166,15 @@ const SEARCH_LIMIT = 6;
 /**
  * Stedsøgning, når brugeren selv sætter stedet på et indlæg. Kaldes først, når der
  * trykkes "Søg" (Nominatims brugspolitik forbyder søgning, mens man skriver), og går
- * gennem samme kø som stednavnene. Rejsens land foretrækkes: findes intet dér, søges overalt.
+ * gennem samme kø som stednavnene. Rejsens lande foretrækkes: findes intet dér, søges overalt.
  */
 export async function searchPlaces(
   query: string,
-  countryCode: string | null | undefined,
+  countryCodes: readonly string[],
   userId: string,
 ): Promise<PlaceSearchResult[]> {
-  const cc = countryCode?.toLowerCase() ?? null;
+  // Nominatim tager flere lande adskilt af komma.
+  const cc = countryCodes.length ? [...new Set(countryCodes.map((c) => c.toLowerCase()))].sort().join(",") : null;
   const key = `${cc ?? "*"}|${query.toLowerCase()}`;
   const cached = searchCache.get(key);
   if (cached) return cached;

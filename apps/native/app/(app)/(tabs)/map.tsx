@@ -20,7 +20,7 @@ export default function MapScreen() {
   const router = useRouter();
   const bp = useBreakpoint();
   const { user } = useLocalDb();
-  const { trip, trips, showAll, scope, posts, pendingCount, isLoading } = useSelectedPosts();
+  const { trip, trips, showAll, scope, posts, pendingCount, isLoading, canAddPosts } = useSelectedPosts();
   const tripLabel = useTripLabel(trips, showAll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -56,11 +56,13 @@ export default function MapScreen() {
         title="Intet at vise på kortet endnu"
         message={
           all.length > 0
-            ? `Ingen af ${showAll ? "dine rejsers" : "rejsens"} indlæg har en position. Tillad placering, når du opretter et indlæg, så kommer det på kortet.`
+            ? canAddPosts
+              ? `Ingen af ${showAll ? "dine rejsers" : "rejsens"} indlæg har en position. Tillad placering, når du opretter et indlæg, så kommer det på kortet.`
+              : "Ingen af rejsens indlæg har en position."
             : "Indlæg med GPS-position bliver vist her."
         }
       >
-        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} />
+        {canAddPosts ? <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} /> : null}
       </EmptyState>
     );
   } else {

@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 
 import type { MediaStorage } from "@rejsedagbog/api/storage";
 import { mediaKeys } from "@rejsedagbog/api/storage";
-import { getTripMembership } from "@rejsedagbog/api/trip-access";
+import { canContribute, getTripMembership } from "@rejsedagbog/api/trip-access";
 import type { Database } from "@rejsedagbog/db";
 import {
   UPLOAD_ALLOWED_MIME_TYPES,
@@ -69,7 +69,7 @@ type ReceivedFile =
 
 /**
  * POST /api/uploads (multipart: tripId, mediaId, kind?, file).
- * Tjekker session og medlemskab af rejsen og validerer filtype og størrelse.
+ * Tjekker session og medlemskab af rejsen (ikke kun visning) og validerer filtype og størrelse.
  * Billeder: EXIF fjernes, og der laves en thumbnail. Videoer (Could): metadata
  * fjernes med ffmpeg, og der laves en plakatramme. Begge dele lægges i bucket'en.
  */
@@ -131,6 +131,10 @@ export function registerUploadRoute(app: FastifyInstance, deps: UploadDeps) {
         // Samme svar for "findes ikke" og "ikke medlem", så rejse-id'er ikke kan gættes.
         const membership = await getTripMembership(deps.db, userId, tripId);
         if (!membership) return fail(reply, 404, "NOT_FOUND", "Rejsen findes ikke");
+        // Delt til visning: må se rejsen, men ikke lægge billeder op.
+        if (!canContribute(membership.role)) {
+          return fail(reply, 403, "FORBIDDEN", "Du kan se rejsen, men ikke lægge billeder op");
+        }
 
         if (!deps.storage) {
           return fail(reply, 503, "STORAGE_UNAVAILABLE", "Billeder kan ikke gemmes lige nu");

@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { countryName, flagEmoji } from "@rejsedagbog/shared";
+import { countryName, flagEmoji, flagEmojis } from "@rejsedagbog/shared";
 import { Link } from "expo-router";
 import { useMemo, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -17,7 +17,7 @@ import { radius, space, typo, usePalette } from "@/lib/theme";
  */
 export function useTripLabel(trips: LocalTrip[], showAll: boolean): (post: { tripId: string }) => string | null {
   const labels = useMemo(
-    () => new Map(trips.map((t) => [t.id, `${flagEmoji(t.countryCode)} ${t.name}`])),
+    () => new Map(trips.map((t) => [t.id, `${flagEmojis(t.countryCodes, 2)} ${t.name}`])),
     [trips],
   );
   return (post) => (showAll ? (labels.get(post.tripId) ?? null) : null);
@@ -25,7 +25,7 @@ export function useTripLabel(trips: LocalTrip[], showAll: boolean): (post: { tri
 
 /** "🇩🇰 🇯🇵 · 3 rejser i 2 lande" til headeren, når alle rejser vises. */
 export function allTripsSummary(trips: LocalTrip[]): string {
-  const countries = [...new Set(trips.map((t) => t.countryCode))];
+  const countries = [...new Set(trips.flatMap((t) => t.countryCodes))];
   const flags = countries.slice(0, 8).map(flagEmoji).join(" ");
   const tripWord = trips.length === 1 ? "rejse" : "rejser";
   const countryWord = countries.length === 1 ? "land" : "lande";
@@ -43,6 +43,27 @@ export function CountryTag({ code }: { code: string | null }) {
     >
       <Text style={[typo.eyebrow, { color: p.accentText, letterSpacing: 1 }]}>{code.toUpperCase()}</Text>
     </View>
+  );
+}
+
+/** En rundrejses lande som stempler: højst tre, resten som "+2". */
+export function CountryTags({ codes }: { codes: string[] }) {
+  const p = usePalette();
+  const MAX = 3;
+  return (
+    <>
+      {codes.slice(0, MAX).map((code) => (
+        <CountryTag key={code} code={code} />
+      ))}
+      {codes.length > MAX ? (
+        <Text
+          accessibilityLabel={`og ${codes.slice(MAX).map(countryName).join(", ")}`}
+          style={[typo.eyebrow, { color: p.accentText, letterSpacing: 1 }]}
+        >
+          +{codes.length - MAX}
+        </Text>
+      ) : null}
+    </>
   );
 }
 
@@ -108,8 +129,15 @@ export function TripHeader({
               </Text>
             ) : trip ? (
               <>
-                <CountryTag code={trip.countryCode} />
+                <CountryTags codes={trip.countryCodes} />
                 <Text style={{ color: p.textMuted, fontSize: 14 }}>{formatDateRange(trip.startDate, trip.endDate)}</Text>
+                {trip.role === "viewer" ? (
+                  // Rejsen er delt med brugeren: der kan ses, men ikke lægges op.
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Ionicons name="eye-outline" size={15} color={p.textMuted} />
+                    <Text style={{ color: p.textMuted, fontSize: 14 }}>Kun visning</Text>
+                  </View>
+                ) : null}
                 {trip.memberCount > 1 ? (
                   <Link href={{ pathname: "/trip/members/[id]", params: { id: trip.id } }} asChild>
                     <Pressable accessibilityRole="button" accessibilityHint="Se hvem der er med" hitSlop={8}>

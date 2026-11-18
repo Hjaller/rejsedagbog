@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 
 import { toTripDto, tripSelect, type TripMemberDto } from "../dto";
 import { protectedProcedure, router, tripMemberProcedure, tripOwnerProcedure } from "../index";
+import { toTripRole } from "../trip-access";
 
 const asDate = (isoDate: string) => new Date(`${isoDate}T00:00:00.000Z`);
 
@@ -14,7 +15,7 @@ export const tripsRouter = router({
       select: { role: true, trip: { select: tripSelect } },
       orderBy: { trip: { startDate: "desc" } },
     });
-    return memberships.map((m) => toTripDto(m.trip, m.role === "owner" ? "owner" : "member"));
+    return memberships.map((m) => toTripDto(m.trip, toTripRole(m.role)));
   }),
 
   get: tripMemberProcedure.query(async ({ ctx, input }) => {
@@ -25,7 +26,10 @@ export const tripsRouter = router({
     return toTripDto(trip, ctx.membership.role);
   }),
 
-  /** Rejsens medlemmer: ejeren først, derefter i den rækkefølge, de kom med. Kun for medlemmer. */
+  /**
+   * Alle med adgang til rejsen: ejeren først, derefter i den rækkefølge, de kom med.
+   * Dem, der kun kan se, har rollen "viewer". Kun for dem, der selv har adgang.
+   */
   members: tripMemberProcedure.query(async ({ ctx, input }): Promise<TripMemberDto[]> => {
     const members = await ctx.db.tripMember.findMany({
       where: { tripId: input.tripId },
@@ -36,7 +40,7 @@ export const tripsRouter = router({
       .map((m) => ({
         id: m.user.id,
         name: m.user.name,
-        role: m.role === "owner" ? ("owner" as const) : ("member" as const),
+        role: toTripRole(m.role),
         joinedAt: m.joinedAt.toISOString(),
       }))
       .sort((a, b) => (a.role === b.role ? 0 : a.role === "owner" ? -1 : 1));
@@ -56,7 +60,7 @@ export const tripsRouter = router({
       data: {
         id: input.id,
         name: input.name,
-        countryCode: input.countryCode,
+        countryCodes: input.countryCodes,
         startDate: asDate(input.startDate),
         endDate: asDate(input.endDate),
         ownerId: userId,
@@ -72,7 +76,7 @@ export const tripsRouter = router({
       where: { id: input.tripId },
       data: {
         name: input.name,
-        countryCode: input.countryCode,
+        countryCodes: input.countryCodes,
         startDate: asDate(input.startDate),
         endDate: asDate(input.endDate),
       },

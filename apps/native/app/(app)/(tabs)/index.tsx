@@ -49,7 +49,7 @@ export default function TimelineScreen() {
   const router = useRouter();
   const bp = useBreakpoint();
   const { user } = useLocalDb();
-  const { trip, trips, showAll, scope, posts, pendingCount, isLoading: tripLoading } = useSelectedPosts();
+  const { trip, trips, showAll, scope, posts, pendingCount, isLoading: tripLoading, canAddPosts } = useSelectedPosts();
   const tripLabel = useTripLabel(trips, showAll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const refresh = useRefreshSync();
@@ -103,12 +103,16 @@ export default function TimelineScreen() {
           icon="camera-outline"
           title="Ingen indlæg endnu"
           message={
-            showAll
-              ? "Ingen af dine rejser har indlæg endnu. Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
-              : "Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
+            !canAddPosts
+              ? "Rejsen er delt med dig. Når de rejsende lægger indlæg op, kan du se dem her."
+              : showAll
+                ? "Ingen af dine rejser har indlæg endnu. Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
+                : "Tryk på + og tag et billede – sted, vejr og land kommer på af sig selv."
           }
         >
-          <Button label="Tilføj det første billede" icon="add" variant="accent" onPress={() => router.push("/post/add")} />
+          {canAddPosts ? (
+            <Button label="Tilføj det første billede" icon="add" variant="accent" onPress={() => router.push("/post/add")} />
+          ) : null}
         </EmptyState>
       </View>
     );

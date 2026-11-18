@@ -81,6 +81,13 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE posts ADD COLUMN localThumbUri TEXT;
   ALTER TABLE posts ADD COLUMN durationMs INTEGER;
   `,
+  // v4: rundrejser og deling til visning. En rejse kan have flere lande, gemt som
+  // "IT,FR,ES" i besøgsrækkefølge (den gamle værdi "IT" er allerede en gyldig liste).
+  // viewCode er koden til deling, som kun ejeren ser; role kan nu også være 'viewer'.
+  `
+  ALTER TABLE trips RENAME COLUMN countryCode TO countryCodes;
+  ALTER TABLE trips ADD COLUMN viewCode TEXT;
+  `,
 ];
 
 export function migrate(db: MigratableDb) {

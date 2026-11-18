@@ -3,7 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { ZodError } from "zod";
 
 import type { Context } from "./context";
-import { assertTripMember } from "./trip-access";
+import { assertTripMember, canContribute } from "./trip-access";
 
 export const t = initTRPC.context<Context>().create({
   errorFormatter({ shape, error }) {
@@ -58,6 +58,20 @@ export const tripMemberProcedure = protectedProcedure
     const membership = await assertTripMember(ctx.db, ctx.session.user.id, input.tripId);
     return next({ ctx: { ...ctx, membership } });
   });
+
+/**
+ * Som tripMemberProcedure, men ikke for dem, der kun har fået rejsen delt til visning.
+ * Alt, der opretter eller ændrer indlæg, SKAL bygge på denne.
+ */
+export const tripContributorProcedure = tripMemberProcedure.use(({ ctx, next }) => {
+  if (!canContribute(ctx.membership.role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Rejsen er delt med dig, så du kan se den, men ikke lægge noget op",
+    });
+  }
+  return next();
+});
 
 /** Som tripMemberProcedure, men kun for rejsens ejer. */
 export const tripOwnerProcedure = tripMemberProcedure.use(({ ctx, next }) => {

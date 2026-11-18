@@ -1,4 +1,4 @@
-import type { CountryFacts } from "@rejsedagbog/shared";
+import type { CountryFacts, InviteAccess } from "@rejsedagbog/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -7,6 +7,7 @@ import { requestSync } from "@/lib/sync/sync-scheduler";
 
 import { useLocalDb } from "./provider";
 import {
+  canPost,
   countPending,
   countPostsByTrip,
   getCountryFacts,
@@ -78,8 +79,9 @@ export const ALL_TRIPS = "alle";
 
 /**
  * Den aktive rejse (valgt i Rejser-fanen og forvalgt på opret-skærmen).
- * Med "Alle rejser" valgt er `trip` null og `showAll` true; `defaultTrip` er så den
- * rejse, nye indlæg forvælges til.
+ * Med "Alle rejser" valgt er `trip` null og `showAll` true. `defaultTrip` er den rejse,
+ * nye indlæg forvælges til: den valgte, eller – med "Alle rejser", eller når den valgte
+ * kun er delt til visning – den af brugerens egne og grupperejser, der er i gang / er nyest.
  */
 export function useActiveTrip() {
   const { db, user } = useLocalDb();
@@ -97,6 +99,10 @@ export function useActiveTrip() {
   const showAll = activeId.data === ALL_TRIPS && list.length > 0;
   const trip = showAll ? null : (list.find((t) => t.id === activeId.data) ?? fallback);
 
+  // Rejser, der kun er delt til visning, kan man ikke lægge indlæg op på.
+  const postableTrips = list.filter(canPost);
+  const postDefault = trip && canPost(trip) ? trip : (defaultTrip(postableTrips) ?? null);
+
   const setActiveTrip = async (tripId: string) => {
     await setMeta(db, "activeTripId", tripId);
     queryClient.setQueryData(keys.activeTripId(user.id), tripId);
@@ -105,8 +111,12 @@ export function useActiveTrip() {
   return {
     trip,
     showAll,
-    /** Den valgte rejse, eller (med "Alle rejser") den, der er i gang / den nyeste. */
-    defaultTrip: trip ?? fallback,
+    /** Rejsen, et nyt indlæg gemmes på. null, når brugeren ikke har nogen at lægge op på. */
+    defaultTrip: postDefault,
+    /** Rejserne, brugeren kan lægge indlæg op på (ikke dem, der kun er delt til visning). */
+    postableTrips,
+    /** Kan der lægges indlæg op på det, der vises? Nej, når rejsen kun er delt til visning. */
+    canAddPosts: trip ? canPost(trip) : list.length === 0 || postableTrips.length > 0,
     trips: list,
     isLoading: trips.isLoading || activeId.isLoading,
     error: trips.error ?? activeId.error,
@@ -245,12 +255,12 @@ export function useDeletePost() {
   });
 }
 
-/** Gemmer invitationskoden lokalt, efter serveren har lavet eller fjernet den. */
+/** Gemmer invitationskoden eller koden til deling lokalt, efter serveren har lavet eller fjernet den. */
 export function useSetTripInviteCode() {
   const { db } = useLocalDb();
   const invalidate = useInvalidateLocal();
-  return async (tripId: string, code: string | null) => {
-    await setTripInviteCode(db, tripId, code);
+  return async (tripId: string, access: InviteAccess, code: string | null) => {
+    await setTripInviteCode(db, tripId, access, code);
     await invalidate();
   };
 }

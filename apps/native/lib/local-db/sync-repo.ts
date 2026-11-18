@@ -1,7 +1,7 @@
 import type { MediaDto, PostDto, TripDto } from "@rejsedagbog/api/routers/index";
 
 import type { LocalDb } from "./types";
-import { localFilesOf, type LocalPost, type LocalTrip } from "./repo";
+import { localFilesOf, toTrip, type LocalPost, type LocalTrip, type TripRow } from "./repo";
 
 /**
  * Databaseoperationer til upload-køen og hentning fra serveren (udviklingsplan afsnit 3).
@@ -11,8 +11,11 @@ import { localFilesOf, type LocalPost, type LocalTrip } from "./repo";
 // Rejser
 // ---------------------------------------------------------------------------
 
-export function listUnsyncedTrips(db: LocalDb): Promise<LocalTrip[]> {
-  return db.getAllAsync<LocalTrip>("SELECT * FROM trips WHERE syncStatus != 'synkroniseret' ORDER BY createdAt");
+export async function listUnsyncedTrips(db: LocalDb): Promise<LocalTrip[]> {
+  const rows = await db.getAllAsync<TripRow>(
+    "SELECT * FROM trips WHERE syncStatus != 'synkroniseret' ORDER BY createdAt",
+  );
+  return rows.map(toTrip);
 }
 
 export async function markTripFailed(db: LocalDb, tripId: string, error: string) {
@@ -23,21 +26,22 @@ export async function markTripFailed(db: LocalDb, tripId: string, error: string)
 export async function upsertTripFromServer(db: LocalDb, t: TripDto) {
   const now = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO trips (id, name, countryCode, startDate, endDate, role, memberCount, inviteCode, syncStatus, lastError, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synkroniseret', NULL, ?, ?)
+    `INSERT INTO trips (id, name, countryCodes, startDate, endDate, role, memberCount, inviteCode, viewCode, syncStatus, lastError, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synkroniseret', NULL, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name, countryCode = excluded.countryCode, startDate = excluded.startDate,
+       name = excluded.name, countryCodes = excluded.countryCodes, startDate = excluded.startDate,
        endDate = excluded.endDate, role = excluded.role, memberCount = excluded.memberCount,
-       inviteCode = excluded.inviteCode, syncStatus = 'synkroniseret', lastError = NULL,
-       updatedAt = excluded.updatedAt`,
+       inviteCode = excluded.inviteCode, viewCode = excluded.viewCode, syncStatus = 'synkroniseret',
+       lastError = NULL, updatedAt = excluded.updatedAt`,
     t.id,
     t.name,
-    t.countryCode,
+    t.countryCodes.join(","),
     t.startDate,
     t.endDate,
     t.role,
     t.memberCount,
     t.inviteCode,
+    t.viewCode,
     now,
     t.updatedAt,
   );

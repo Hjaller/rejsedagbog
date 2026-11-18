@@ -15,8 +15,10 @@ import { fonts, space, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 /**
- * Tilslut en grupperejse med en kode fra ejeren. Kræver net, fordi serveren skal
- * give adgang; bagefter hentes rejsens indlæg og billeder i baggrunden.
+ * Tilslut en rejse med en kode fra ejeren: en invitationskode (man er med og kan lægge
+ * op) eller en kode til deling (man kan kun se). Serveren afgør, hvilken slags koden er.
+ * Kræver net, fordi serveren skal give adgang; bagefter hentes rejsens indlæg og billeder
+ * i baggrunden.
  */
 export default function JoinTripScreen() {
   const p = usePalette();
@@ -63,11 +65,12 @@ export default function JoinTripScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={{ color: p.textMuted, fontSize: 15, lineHeight: 21 }}>
-          Skriv koden, du har fået af den, der har oprettet rejsen. Så kan du se alle rejsens indlæg og billeder og
-          lægge dine egne op.
+          Skriv koden, du har fået af den, der har oprettet rejsen. Med en invitationskode er du med på rejsen og
+          kan lægge dine egne indlæg op. Er rejsen delt med dig, kan du se indlæg og billeder, men ikke lægge noget
+          op.
         </Text>
         <TextField
-          label="Invitationskode"
+          label="Kode"
           placeholder="Fx K7M2QX"
           value={code}
           onChangeText={(v) => {

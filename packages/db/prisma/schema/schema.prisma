@@ -20,12 +20,14 @@ model Trip {
   /// UUID genereret i appen, så en rejse oprettet offline kan synkroniseres idempotent.
   id          String       @id @db.Uuid
   name        String       @db.VarChar(80)
-  /// ISO 3166-1 alpha-2
-  countryCode String       @db.Char(2)
+  /// ISO 3166-1 alpha-2. En rundrejse kan have flere lande, i den rækkefølge de besøges.
+  countryCodes String[]
   startDate   DateTime     @db.Date
   endDate     DateTime     @db.Date
   /// Should: grupperejser. Seks tegn [A-Z0-9].
   inviteCode  String?      @unique @db.Char(6)
+  /// Kode til deling: giver kun adgang til at se (rollen "viewer"). Samme format.
+  viewCode    String?      @unique @db.Char(6)
   ownerId     String
   owner       User         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     TripMember[]
@@ -43,7 +45,7 @@ model TripMember {
   trip     Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
   userId   String
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// owner | member
+  /// owner | member | viewer (kan kun se)
   role     String   @default("member")
   joinedAt DateTime @default(now())
 

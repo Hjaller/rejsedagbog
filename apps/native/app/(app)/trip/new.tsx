@@ -1,4 +1,5 @@
-import { COUNTRIES, countryName, flagEmoji, tripCreateInput } from "@rejsedagbog/shared";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { COUNTRIES, countryName, flagEmoji, TRIP_COUNTRIES_MAX, tripCreateInput } from "@rejsedagbog/shared";
 import * as Crypto from "expo-crypto";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
@@ -18,8 +19,9 @@ const normalize = (s: string) =>
     .replace(/[̀-ͯ]/g, "");
 
 /**
- * Opret rejse (navn, datoer, land). Gemmes lokalt og virker uden net, fordi
- * landelisten med danske navne ligger i appen.
+ * Opret rejse (navn, datoer, lande). En rundrejse kan have flere lande, som vælges i
+ * den rækkefølge, de besøges. Gemmes lokalt og virker uden net, fordi landelisten med
+ * danske navne ligger i appen.
  */
 export default function NewTripScreen() {
   const p = usePalette();
@@ -33,7 +35,7 @@ export default function NewTripScreen() {
 
   const [name, setName] = useState("");
   const [countryQuery, setCountryQuery] = useState("");
-  const [countryCode, setCountryCode] = useState<string | null>(null);
+  const [countryCodes, setCountryCodes] = useState<string[]>([]);
   const [start, setStart] = useState(formatDateInput(toIsoDate(today)));
   const [end, setEnd] = useState(formatDateInput(toIsoDate(inAWeek)));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -41,8 +43,11 @@ export default function NewTripScreen() {
   const matches = useMemo(() => {
     const q = normalize(countryQuery.trim());
     if (!q) return [];
-    return COUNTRIES.filter((c) => normalize(c.name).includes(q) || c.code.toLowerCase() === q).slice(0, 6);
-  }, [countryQuery]);
+    return COUNTRIES.filter(
+      (c) => !countryCodes.includes(c.code) && (normalize(c.name).includes(q) || c.code.toLowerCase() === q),
+    ).slice(0, 6);
+  }, [countryQuery, countryCodes]);
+  const canAddCountry = countryCodes.length < TRIP_COUNTRIES_MAX;
 
   const save = async () => {
     const startDate = parseDateInput(start);
@@ -50,12 +55,12 @@ export default function NewTripScreen() {
     const fieldErrors: Record<string, string> = {};
     if (!startDate) fieldErrors.startDate = "Skriv datoen som dd.mm.åååå";
     if (!endDate) fieldErrors.endDate = "Skriv datoen som dd.mm.åååå";
-    if (!countryCode) fieldErrors.countryCode = "Vælg et land";
+    if (countryCodes.length === 0) fieldErrors.countryCodes = "Vælg mindst ét land";
 
     const input = {
       id: Crypto.randomUUID(),
       name,
-      countryCode: countryCode ?? "",
+      countryCodes,
       startDate: startDate ?? "",
       endDate: endDate ?? "",
     };
@@ -99,51 +104,61 @@ export default function NewTripScreen() {
         />
 
         <View style={{ gap: space.sm }}>
-          {countryCode ? (
+          {countryCodes.length > 0 ? (
             <View style={{ gap: space.xs }}>
-              <Text style={{ color: p.text, fontSize: 14, fontWeight: "600" }}>Land</Text>
-              <Pressable
-                onPress={() => {
-                  setCountryCode(null);
-                  setCountryQuery("");
-                }}
-                accessibilityRole="button"
-                accessibilityHint="Vælg et andet land"
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderWidth: 1,
-                  borderColor: p.borderStrong,
-                  borderRadius: radius.md,
-                  padding: space.md,
-                  backgroundColor: p.surface,
-                }}
-              >
-                <Text style={{ color: p.text, fontSize: 16 }}>
-                  {flagEmoji(countryCode)} {countryName(countryCode)}
-                </Text>
-                <Text style={{ color: p.accent, fontSize: 15, fontWeight: "600" }}>Skift</Text>
-              </Pressable>
+              <Text style={{ color: p.text, fontSize: 14, fontWeight: "600" }}>
+                {countryCodes.length === 1 ? "Land" : "Lande"}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+                {countryCodes.map((code) => (
+                  <Pressable
+                    key={code}
+                    onPress={() => setCountryCodes((list) => list.filter((c) => c !== code))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Fjern ${countryName(code)}`}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: space.sm,
+                      minHeight: 44,
+                      paddingLeft: space.md,
+                      paddingRight: space.sm,
+                      borderWidth: 1,
+                      borderColor: p.borderStrong,
+                      borderRadius: radius.pill,
+                      backgroundColor: pressed ? p.surfaceMuted : p.surface,
+                    })}
+                  >
+                    <Text style={{ color: p.text, fontSize: 16 }}>
+                      {flagEmoji(code)} {countryName(code)}
+                    </Text>
+                    <Ionicons name="close" size={18} color={p.textMuted} />
+                  </Pressable>
+                ))}
+              </View>
             </View>
-          ) : (
+          ) : null}
+          {canAddCountry ? (
             <TextField
-              label="Land"
-              placeholder="Søg, fx Italien"
+              label={countryCodes.length > 0 ? "Tilføj et land mere (rundrejse)" : "Land"}
+              placeholder={countryCodes.length > 0 ? "Søg, fx Frankrig" : "Søg, fx Italien"}
               value={countryQuery}
               onChangeText={setCountryQuery}
-              error={errors.countryCode}
+              error={errors.countryCodes}
               autoCorrect={false}
             />
+          ) : (
+            <Text style={{ color: p.textMuted, fontSize: 14 }}>En rejse kan have højst {TRIP_COUNTRIES_MAX} lande.</Text>
           )}
-          {!countryCode && matches.length > 0 ? (
+          {canAddCountry && matches.length > 0 ? (
             <View style={{ borderWidth: 1, borderColor: p.border, borderRadius: radius.md, overflow: "hidden" }}>
               {matches.map((c, i) => (
                 <Pressable
                   key={c.code}
                   onPress={() => {
-                    setCountryCode(c.code);
-                    setErrors((e) => ({ ...e, countryCode: "" }));
+                    setCountryCodes((list) => (list.includes(c.code) ? list : [...list, c.code]));
+                    setCountryQuery("");
+                    setErrors((e) => ({ ...e, countryCodes: "" }));
                   }}
                   accessibilityRole="button"
                   style={({ pressed }) => ({

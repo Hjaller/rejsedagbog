@@ -1,12 +1,13 @@
 import { randomInt } from "node:crypto";
 
 import { Prisma } from "@rejsedagbog/db";
-import { INVITE_CODE_LENGTH, inviteJoinInput } from "@rejsedagbog/shared";
+import { INVITE_CODE_LENGTH, inviteCodeInput, inviteJoinInput, type InviteAccess } from "@rejsedagbog/shared";
 import { TRPCError } from "@trpc/server";
 
 import { toTripDto, tripSelect } from "../dto";
 import { protectedProcedure, router, tripOwnerProcedure } from "../index";
 import { createAttemptLimiter, ipRateLimitKey } from "../services/attempt-limiter";
+import { toTripRole } from "../trip-access";
 
 /** Uden 0/O og 1/I, så koden kan læses højt og skrives af uden fejl. Passer stadig til ^[A-Z0-9]{6}$. */
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -32,34 +33,60 @@ export const joinFailuresByIp = createAttemptLimiter({ max: 20, windowMs: 10 * 6
 const isUniqueViolation = (err: unknown) =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 
+/** Kolonnen på rejsen for hver slags kode. */
+const codeColumn = { member: "inviteCode", viewer: "viewCode" } as const satisfies Record<InviteAccess, string>;
+
+/** Vilkårligt, men fast tal: låsen, der gør "er koden ledig?" + "gem koden" til ét skridt. */
+const CODE_LOCK_ID = 7_265_301;
+
 export const invitesRouter = router({
-  /** Rejsens invitationskode. Findes der ingen, laves en ny. Kun ejeren. */
-  createCode: tripOwnerProcedure.mutation(async ({ ctx, input }) => {
+  /**
+   * Rejsens kode: invitationskoden (`access: "member"`, kan lægge op) eller koden til
+   * deling (`access: "viewer"`, kan kun se). Findes der ingen, laves en ny. Kun ejeren.
+   */
+  createCode: tripOwnerProcedure.input(inviteCodeInput).mutation(async ({ ctx, input }) => {
+    const column = codeColumn[input.access];
     const trip = await ctx.db.trip.findUniqueOrThrow({
       where: { id: input.tripId },
-      select: { inviteCode: true },
+      select: { inviteCode: true, viewCode: true },
     });
-    if (trip.inviteCode) return { code: trip.inviteCode };
+    if (trip[column]) return { code: trip[column] };
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = generateCode();
-      try {
-        await ctx.db.trip.update({ where: { id: input.tripId }, data: { inviteCode: code } });
-        return { code };
-      } catch (err) {
-        if (!isUniqueViolation(err)) throw err; // koden findes allerede på en anden rejse
-      }
+      // De to slags koder deler navnerum: en kode må kun passe til én rejse og én slags
+      // adgang, ellers kunne en visningskode give lov til at lægge op. Databasen sikrer kun
+      // hver kolonne for sig, så tjek og skrivning sker under en lås.
+      const saved = await ctx.db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CODE_LOCK_ID})`;
+        const taken = await tx.trip.findFirst({
+          where: { OR: [{ inviteCode: code }, { viewCode: code }] },
+          select: { id: true },
+        });
+        if (taken) return false;
+        await tx.trip.update({ where: { id: input.tripId }, data: { [column]: code } });
+        return true;
+      });
+      if (saved) return { code };
     }
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Kunne ikke lave en invitationskode" });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Kunne ikke lave en kode" });
   }),
 
-  /** Fjerner koden, så ingen flere kan tilslutte sig. Eksisterende medlemmer bliver. Kun ejeren. */
-  revokeCode: tripOwnerProcedure.mutation(async ({ ctx, input }) => {
-    await ctx.db.trip.update({ where: { id: input.tripId }, data: { inviteCode: null } });
+  /**
+   * Fjerner koden, så ingen flere kan bruge den. Dem, der allerede har adgang, beholder
+   * den. Kun ejeren.
+   */
+  revokeCode: tripOwnerProcedure.input(inviteCodeInput).mutation(async ({ ctx, input }) => {
+    await ctx.db.trip.update({ where: { id: input.tripId }, data: { [codeColumn[input.access]]: null } });
     return { ok: true as const };
   }),
 
-  /** Tilslutter brugeren rejsen med koden. Idempotent: er man allerede medlem, returneres rejsen bare. */
+  /**
+   * Giver brugeren adgang til rejsen med koden: som medlem med invitationskoden, eller
+   * kun til at se med koden til deling. Idempotent: har man allerede adgang, returneres
+   * rejsen bare. En, der kun kan se, bliver medlem med invitationskoden; ingen mister
+   * adgang ved at bruge en visningskode.
+   */
   join: protectedProcedure.input(inviteJoinInput).mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
     const ipKey = ipRateLimitKey(ctx.clientIp ?? "ukendt");
@@ -75,26 +102,36 @@ export const invitesRouter = router({
       throw tooMany();
     }
 
-    const trip = await ctx.db.trip.findUnique({ where: { inviteCode: input.code }, select: { id: true } });
+    const trip = await ctx.db.trip.findFirst({
+      where: { OR: [{ inviteCode: input.code }, { viewCode: input.code }] },
+      select: { id: true, inviteCode: true },
+    });
     if (!trip) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Koden passer ikke til nogen rejse" });
     }
     // Kun forkerte koder tæller pr. IP, så mange på samme wifi kan tilslutte sig.
     joinFailuresByIp.refund(ipKey, now);
 
-    const existing = await ctx.db.tripMember.findUnique({
-      where: { tripId_userId: { tripId: trip.id, userId } },
-      select: { role: true },
-    });
+    const granted: InviteAccess = trip.inviteCode === input.code ? "member" : "viewer";
+    const where = { tripId_userId: { tripId: trip.id, userId } };
+    const existing = await ctx.db.tripMember.findUnique({ where, select: { role: true } });
     if (!existing) {
-      await ctx.db.tripMember
-        .create({ data: { tripId: trip.id, userId, role: "member" } })
-        .catch((err) => {
-          if (!isUniqueViolation(err)) throw err; // to samtidige forsøg: medlem allerede oprettet
-        });
+      await ctx.db.tripMember.create({ data: { tripId: trip.id, userId, role: granted } }).catch((err) => {
+        if (!isUniqueViolation(err)) throw err; // to samtidige forsøg: adgangen er allerede oprettet
+      });
+    }
+    // Fra "kan kun se" til medlem. updateMany, så ejer og medlem aldrig kan blive sat ned.
+    if (granted === "member") {
+      await ctx.db.tripMember.updateMany({
+        where: { tripId: trip.id, userId, role: "viewer" },
+        data: { role: "member" },
+      });
     }
 
-    const full = await ctx.db.trip.findUniqueOrThrow({ where: { id: trip.id }, select: tripSelect });
-    return toTripDto(full, existing?.role === "owner" ? "owner" : "member");
+    const [full, membership] = await Promise.all([
+      ctx.db.trip.findUniqueOrThrow({ where: { id: trip.id }, select: tripSelect }),
+      ctx.db.tripMember.findUniqueOrThrow({ where, select: { role: true } }),
+    ]);
+    return toTripDto(full, toTripRole(membership.role));
   }),
 });

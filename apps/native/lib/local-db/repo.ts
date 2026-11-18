@@ -1,4 +1,4 @@
-import type { CountryFacts, MediaKind, SyncStatus, Weather } from "@rejsedagbog/shared";
+import type { CountryFacts, InviteAccess, MediaKind, SyncStatus, TripRole, Weather } from "@rejsedagbog/shared";
 
 import type { LocalDb } from "./types";
 
@@ -9,16 +9,35 @@ import type { LocalDb } from "./types";
 export type LocalTrip = {
   id: string;
   name: string;
-  countryCode: string;
+  /** Rejsens lande i den rækkefølge, de besøges. Mindst ét. */
+  countryCodes: string[];
   startDate: string;
   endDate: string;
-  role: "owner" | "member";
+  /** "viewer": rejsen er delt med brugeren, som kun kan se den. */
+  role: TripRole;
   memberCount: number;
   inviteCode: string | null;
+  /** Koden til deling (kun visning). Kun ejeren har den. */
+  viewCode: string | null;
   syncStatus: SyncStatus;
   createdAt: string;
   updatedAt: string;
 };
+
+/** Rækken i SQLite, hvor landene står som "IT,FR,ES". */
+export type TripRow = Omit<LocalTrip, "countryCodes"> & { countryCodes: string };
+
+export const toTrip = (row: TripRow): LocalTrip => ({
+  ...row,
+  countryCodes: row.countryCodes.split(",").filter(Boolean),
+});
+
+/** Må brugeren lægge indlæg op på rejsen? Ikke, når den kun er delt til visning. */
+export const canPost = (trip: Pick<LocalTrip, "role">) => trip.role !== "viewer";
+
+/** Landet til et indlæg uden position: kendes kun, når rejsen har ét land. */
+export const singleCountry = (trip: Pick<LocalTrip, "countryCodes">): string | null =>
+  trip.countryCodes.length === 1 ? trip.countryCodes[0]! : null;
 
 export type LocalPost = {
   id: string;
@@ -116,17 +135,29 @@ export function postImageSource(
 // Rejser
 // ---------------------------------------------------------------------------
 
-export function listTrips(db: LocalDb): Promise<LocalTrip[]> {
-  return db.getAllAsync<LocalTrip>("SELECT * FROM trips ORDER BY startDate DESC, createdAt DESC");
+export async function listTrips(db: LocalDb): Promise<LocalTrip[]> {
+  const rows = await db.getAllAsync<TripRow>("SELECT * FROM trips ORDER BY startDate DESC, createdAt DESC");
+  return rows.map(toTrip);
 }
 
-export function getTrip(db: LocalDb, id: string): Promise<LocalTrip | null> {
-  return db.getFirstAsync<LocalTrip>("SELECT * FROM trips WHERE id = ?", id);
+export async function getTrip(db: LocalDb, id: string): Promise<LocalTrip | null> {
+  const row = await db.getFirstAsync<TripRow>("SELECT * FROM trips WHERE id = ?", id);
+  return row ? toTrip(row) : null;
 }
 
-/** Gemmer den kode, serveren har lavet eller fjernet (kun ejeren ser den). */
-export async function setTripInviteCode(db: LocalDb, tripId: string, code: string | null): Promise<void> {
-  await db.runAsync("UPDATE trips SET inviteCode = ? WHERE id = ?", code, tripId);
+/**
+ * Gemmer den kode, serveren har lavet eller fjernet (kun ejeren ser den):
+ * invitationskoden ("member") eller koden til deling ("viewer").
+ */
+export async function setTripInviteCode(
+  db: LocalDb,
+  tripId: string,
+  access: InviteAccess,
+  code: string | null,
+): Promise<void> {
+  const sql =
+    access === "viewer" ? "UPDATE trips SET viewCode = ? WHERE id = ?" : "UPDATE trips SET inviteCode = ? WHERE id = ?";
+  await db.runAsync(sql, code, tripId);
 }
 
 /** Antal i gruppen fra serveren, så "N i gruppen" passer, når medlemslisten er hentet. */
@@ -139,15 +170,15 @@ export async function setTripMemberCount(db: LocalDb, tripId: string, count: num
 
 export async function insertTrip(
   db: LocalDb,
-  trip: Pick<LocalTrip, "id" | "name" | "countryCode" | "startDate" | "endDate">,
+  trip: Pick<LocalTrip, "id" | "name" | "countryCodes" | "startDate" | "endDate">,
 ): Promise<void> {
   const now = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO trips (id, name, countryCode, startDate, endDate, role, memberCount, syncStatus, createdAt, updatedAt)
+    `INSERT INTO trips (id, name, countryCodes, startDate, endDate, role, memberCount, syncStatus, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, 'owner', 1, 'lokal', ?, ?)`,
     trip.id,
     trip.name,
-    trip.countryCode,
+    trip.countryCodes.join(","),
     trip.startDate,
     trip.endDate,
     now,

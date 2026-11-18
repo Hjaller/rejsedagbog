@@ -37,7 +37,8 @@ export default function TripSwitchSheet() {
     const day = tripDay(t.startDate, t.endDate, new Date());
     const when = day ? `I gang · dag ${day.day} af ${day.total}` : formatDateRange(t.startDate, t.endDate);
     const local = t.syncStatus !== "synkroniseret" ? " · kun på telefonen" : "";
-    return `${when} · ${n} indlæg${local}`;
+    const shared = t.role === "viewer" ? " · kun visning" : "";
+    return `${when} · ${n} indlæg${local}${shared}`;
   };
 
   return (
@@ -65,7 +66,7 @@ export default function TripSwitchSheet() {
               key={t.id}
               selected={!showAll && t.id === active?.id}
               onPress={() => choose(t.id)}
-              icon={<Text style={{ fontSize: 26 }}>{flagEmoji(t.countryCode)}</Text>}
+              icon={<Text style={{ fontSize: 26 }}>{flagEmoji(t.countryCodes[0] ?? "")}</Text>}
               title={t.name}
               subtitle={subtitle(t)}
             />

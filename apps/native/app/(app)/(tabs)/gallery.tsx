@@ -5,7 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "
 
 import { Button } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
-import { flagEmoji } from "@rejsedagbog/shared";
+import { flagEmojis } from "@rejsedagbog/shared";
 
 import { authorLabel, PostDetail, VideoBadge } from "@/components/post-views";
 import { DayHeading, TripHeader } from "@/components/trip-header";
@@ -54,7 +54,7 @@ function tripOptions(photos: LocalPost[], trips: LocalTrip[]): FilterOption[] {
   const withPhotos = new Set(photos.map((post) => post.tripId));
   return trips
     .filter((t) => withPhotos.has(t.id))
-    .map((t) => ({ key: t.id, label: `${flagEmoji(t.countryCode)} ${t.name}` }));
+    .map((t) => ({ key: t.id, label: `${flagEmojis(t.countryCodes, 2)} ${t.name}` }));
 }
 
 /** Grupperer billeder pr. dag (wireframe 4) og deler dem op i rækker til et virtualiseret gitter. */
@@ -85,7 +85,7 @@ export default function GalleryScreen() {
   const router = useRouter();
   const bp = useBreakpoint();
   const { user } = useLocalDb();
-  const { trip, trips, showAll, scope, posts, pendingCount, isLoading } = useSelectedPosts();
+  const { trip, trips, showAll, scope, posts, pendingCount, isLoading, canAddPosts } = useSelectedPosts();
   const [width, setWidth] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dayFilter, setDayFilter] = useState<string | null>(null);
@@ -185,7 +185,7 @@ export default function GalleryScreen() {
   } else if (rows.length === 0) {
     body = (
       <EmptyState icon="images-outline" title="Ingen billeder endnu" message={showAll ? "Billederne fra dine rejsers indlæg samles her." : "Billederne fra rejsens indlæg samles her."}>
-        <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} />
+        {canAddPosts ? <Button label="Nyt indlæg" icon="add" onPress={() => router.push("/post/add")} /> : null}
       </EmptyState>
     );
   } else {

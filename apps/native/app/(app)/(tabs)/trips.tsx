@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { countryName, flagEmoji } from "@rejsedagbog/shared";
+import { countryNames, flagEmojis } from "@rejsedagbog/shared";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,7 +31,7 @@ export default function TripsScreen() {
   const { trip: active, showAll, trips, setActiveTrip, isLoading } = useActiveTrip();
   const counts = usePostCounts();
   const totalPosts = trips.reduce((sum, t) => sum + (counts.data?.[t.id] ?? 0), 0);
-  const countries = new Set(trips.map((t) => t.countryCode)).size;
+  const countries = new Set(trips.flatMap((t) => t.countryCodes)).size;
   const columns = width >= 900 ? 4 : width >= 600 ? 3 : 2;
 
   const choose = async (tripId: string) => {
@@ -85,7 +85,7 @@ export default function TripsScreen() {
           label="Tilslut med kode"
           variant="secondary"
           onPress={() => router.push("/trip/join")}
-          accessibilityHint="Tilslut en grupperejse med en invitationskode"
+          accessibilityHint="Tilslut en grupperejse, eller se en rejse, der er delt med dig"
           style={{ flex: 1 }}
         />
       </View>
@@ -103,7 +103,7 @@ export default function TripsScreen() {
         <EmptyState
           icon="airplane-outline"
           title="Ingen rejser endnu"
-          message="Opret en rejse med navn, land og datoer. Det virker også uden internet. Har du fået en invitationskode, så tryk på Tilslut med kode."
+          message="Opret en rejse med navn, lande og datoer. Det virker også uden internet. Har du fået en kode til en andens rejse, så tryk på Tilslut med kode."
         />
       </View>
     );
@@ -151,7 +151,7 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
-/** Et frimærke med takket kant: landekode, navn, datoer og gruppen. */
+/** Et frimærke med takket kant: landekode (og "+2" på en rundrejse), navn, datoer og gruppen. */
 function Stamp({
   trip,
   postCount,
@@ -167,8 +167,12 @@ function Stamp({
 }) {
   const p = usePalette();
   const localOnly = trip.syncStatus !== "synkroniseret";
-  const color = stampColor(trip.countryCode);
-  const top = [active ? "AKTIV" : null, localOnly ? "KUN PÅ TELEFONEN" : null].filter(Boolean).join(" · ");
+  const viewOnly = trip.role === "viewer";
+  const [firstCountry, ...moreCountries] = trip.countryCodes;
+  const color = stampColor(firstCountry ?? null);
+  const top = [active ? "AKTIV" : null, localOnly ? "KUN PÅ TELEFONEN" : null, viewOnly ? "KUN VISNING" : null]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <View
       style={{
@@ -183,7 +187,7 @@ function Stamp({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
-        accessibilityLabel={`${trip.name}, ${countryName(trip.countryCode)}, ${formatDateRange(trip.startDate, trip.endDate)}, ${postCount} indlæg`}
+        accessibilityLabel={`${trip.name}, ${countryNames(trip.countryCodes)}, ${formatDateRange(trip.startDate, trip.endDate)}, ${postCount} indlæg${viewOnly ? ", delt med dig til visning" : ""}`}
         accessibilityHint="Vis rejsens tidslinje"
         style={({ pressed }) => ({
           backgroundColor: p.surface,
@@ -212,9 +216,12 @@ function Stamp({
           </Text>
           <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
             <Text style={[typo.hero, { color: localOnly ? p.text : "#FFFFFF", fontSize: 38, lineHeight: 42 }]}>
-              {(trip.countryCode ?? "–").toUpperCase()}
+              {(firstCountry ?? "–").toUpperCase()}
+              {moreCountries.length > 0 ? (
+                <Text style={{ fontSize: 18, lineHeight: 42 }}> +{moreCountries.length}</Text>
+              ) : null}
             </Text>
-            <Text style={{ fontSize: 22 }}>{flagEmoji(trip.countryCode)}</Text>
+            <Text style={{ fontSize: moreCountries.length > 0 ? 16 : 22 }}>{flagEmojis(trip.countryCodes, 2)}</Text>
           </View>
         </View>
         <View style={{ paddingHorizontal: 2, gap: 2 }}>
@@ -228,7 +235,7 @@ function Stamp({
         <Pressable
           onPress={onGroup}
           accessibilityRole="button"
-          accessibilityLabel={trip.memberCount > 1 ? `Gruppen på ${trip.name}` : `Invitér til ${trip.name}`}
+          accessibilityLabel={trip.memberCount > 1 ? `Gruppen på ${trip.name}` : `Invitér til eller del ${trip.name}`}
           hitSlop={6}
           style={({ pressed }) => ({
             flexDirection: "row",
@@ -241,7 +248,7 @@ function Stamp({
         >
           <Ionicons name={trip.memberCount > 1 ? "people-outline" : "person-add-outline"} size={16} color={p.text} />
           <Text style={{ color: p.text, fontSize: 13, textDecorationLine: "underline" }}>
-            {trip.memberCount > 1 ? `${trip.memberCount} i gruppen` : "Invitér"}
+            {trip.memberCount > 1 ? `${trip.memberCount} i gruppen` : "Invitér eller del"}
           </Text>
         </Pressable>
       </Pressable>

@@ -112,7 +112,7 @@ describe("synkronisering (upload-kø og hentning)", () => {
     jonas = await signUp(t.app, "Jonas");
     local = createLocalSqlite();
     dir = await mkdtemp(path.join(tmpdir(), "rejsepost-sync-"));
-    await insertTrip(local, { id: tripId, name: "Rom 2026", countryCode: "IT", startDate: "2026-05-12", endDate: "2026-05-19" });
+    await insertTrip(local, { id: tripId, name: "Rom 2026", countryCodes: ["IT"], startDate: "2026-05-12", endDate: "2026-05-19" });
   });
 
   afterAll(async () => {
@@ -517,8 +517,8 @@ describe("indlæg fra alle rejser (valget \"Alle rejser\")", () => {
     const db = createLocalSqlite();
     const rome = randomUUID();
     const tokyo = randomUUID();
-    await insertTrip(db, { id: rome, name: "Rom", countryCode: "IT", startDate: "2026-05-12", endDate: "2026-05-19" });
-    await insertTrip(db, { id: tokyo, name: "Tokyo", countryCode: "JP", startDate: "2026-09-01", endDate: "2026-09-10" });
+    await insertTrip(db, { id: rome, name: "Rom", countryCodes: ["IT"], startDate: "2026-05-12", endDate: "2026-05-19" });
+    await insertTrip(db, { id: tokyo, name: "Tokyo", countryCodes: ["JP"], startDate: "2026-09-01", endDate: "2026-09-10" });
     const post = (id: string, tripId: string, takenAt: string) =>
       insertPost(db, {
         id,

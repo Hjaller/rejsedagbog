@@ -18,7 +18,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     <ul>
       {trips.data.map((t) => (
         <li key={t.id}>
-          {t.name} · {t.countryCode} · {t.startDate} – {t.endDate}
+          {t.name} · {t.countryCodes.join(", ")} · {t.startDate} – {t.endDate}
         </li>
       ))}
     </ul>

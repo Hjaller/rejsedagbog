@@ -273,6 +273,19 @@ export function flagEmoji(code: string): string {
   return String.fromCodePoint(...[...cc].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
 }
 
+/** Flagene for en rejses lande, fx "🇮🇹 🇫🇷 🇪🇸 …". */
+export function flagEmojis(codes: readonly string[], max = 3): string {
+  const flags = codes.slice(0, max).map(flagEmoji).filter(Boolean).join(" ");
+  return codes.length > max ? `${flags} …` : flags;
+}
+
+/** "Italien, Frankrig og Spanien" */
+export function countryNames(codes: readonly string[]): string {
+  const names = codes.map((c) => countryName(c));
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} og ${names[names.length - 1]}`;
+}
+
 /** Fakta om et land fra REST Countries (hentet via serveren og cachet lokalt). */
 export type CountryFacts = {
   code: string;

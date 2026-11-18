@@ -94,10 +94,11 @@ packages/ui      shadcn-komponenter til web
 model Trip {
   id          String       @id @default(uuid())
   name        String
-  countryCode String       // ISO 3166-1 alpha-2
+  countryCodes String[]    // ISO 3166-1 alpha-2; en rundrejse har flere, i besøgsrækkefølge
   startDate   DateTime
   endDate     DateTime
-  inviteCode  String?      @unique   // Should: grupperejser
+  inviteCode  String?      @unique   // Should: grupperejser (giver rollen member)
+  viewCode    String?      @unique   // deling til visning (giver rollen viewer)
   ownerId     String
   members     TripMember[]
   posts       Post[]
@@ -107,7 +108,7 @@ model Trip {
 model TripMember {
   tripId   String
   userId   String
-  role     String   @default("member") // owner | member
+  role     String   @default("member") // owner | member | viewer (kan kun se)
   joinedAt DateTime @default(now())
   @@id([tripId, userId])
 }
@@ -147,7 +148,7 @@ Relationerne til `User` fra Better Auths `auth.prisma` tilføjes. Migrationer k�
 
 ### App (expo-sqlite)
 
-Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remoteMediaId`, `lastError`, `attempts`, `updatedAt`, `pendingOp` og for video `mediaKind`, `localThumbUri`, `durationMs`), `countries` (cache) og `meta`. Migrationer styres med `PRAGMA user_version` (nu v3). Billeder og videoer kopieres til `FileSystem.documentDirectory/images/`.
+Tabeller: `trips` (landene som `countryCodes`, fx `"IT,FR"`, samt `role` og `viewCode`), `posts` (samme felter + `syncStatus`, `localImageUri`, `remoteMediaId`, `lastError`, `attempts`, `updatedAt`, `pendingOp` og for video `mediaKind`, `localThumbUri`, `durationMs`), `countries` (cache) og `meta`. Migrationer styres med `PRAGMA user_version` (nu v4). Billeder og videoer kopieres til `FileSystem.documentDirectory/images/`.
 
 `syncStatus`: `lokal → uploader → synkroniseret`, plus `fejl`, som prøves igen med backoff.
 
@@ -170,12 +171,12 @@ Tabeller: `trips`, `posts` (samme felter + `syncStatus`, `localImageUri`, `remot
 | Router | Procedurer | Adgang |
 |---|---|---|
 | `trips` | `list`, `get`, `members`, `create`, `update`, `delete` | `protectedProcedure`; `get/members/update/delete` via `tripMemberProcedure` (`update/delete` kun ejer) |
-| `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `tripMemberProcedure`; `update/delete` kun forfatteren |
+| `posts` | `list({tripId, since?})`, `get`, `create` (upsert), `update`, `delete` | `list/get`: `tripMemberProcedure`. `create/update/delete`: `tripContributorProcedure` (ikke `viewer`); `update/delete` kun forfatteren |
 | `enrich` | `preview({lat, lon, takenAt})`, `searchPlaces({query, countryCode?})`, `countries` | `protectedProcedure` + rate limit |
-| `invites` (Should) | `createCode(tripId)`, `revokeCode(tripId)`, `join(code)` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
-| REST `POST /api/uploads` | multipart: `tripId`, `mediaId`, `kind` (`photo`/`video`), `file` | session + medlemskab |
+| `invites` (Should) | `createCode({tripId, access})`, `revokeCode({tripId, access})`, `join(code)`; `access` er `member` (standard) eller `viewer` | ejer / `protectedProcedure` + 10 forsøg pr. bruger og 20 fejl pr. IP pr. 10 min. |
+| REST `POST /api/uploads` | multipart: `tripId`, `mediaId`, `kind` (`photo`/`video`), `file` | session + medlemskab, ikke `viewer` (403) |
 
-**Fælles adgangs-middleware:** `tripMemberProcedure` læser `tripId` fra input, slår `TripMember` op og kaster `FORBIDDEN`/`NOT_FOUND`. Alle procedurer, der rører rejsedata, skal bygge på den (risiko 3 i risikoanalysen). Upload-routen genbruger den samme funktion `assertTripMember(userId, tripId)`.
+**Fælles adgangs-middleware:** `tripMemberProcedure` læser `tripId` fra input, slår `TripMember` op og kaster `FORBIDDEN`/`NOT_FOUND`. Alle procedurer, der rører rejsedata, skal bygge på den (risiko 3 i risikoanalysen). Upload-routen genbruger den samme funktion `assertTripMember(userId, tripId)`. Alt, der opretter eller ændrer indlæg, bygger på `tripContributorProcedure`, som afviser rollen `viewer` (se 8.2).
 
 **Øvrig sikkerhed:**
 - Rate limiting på `/api/auth/*` (Better Auths indbyggede `rateLimit`) og på `enrich`/upload (`@fastify/rate-limit`).
@@ -293,6 +294,25 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 - **Video (Could, lavet):** `expo-image-picker` med `videoMaxDuration: 30`, `Media.kind = 'video'`, en størrelsesgrænse på upload og `expo-video` til afspilning. Serveren fjerner videoens metadata (GPS) med ffmpeg. Se status 16. nov.
 - **Postkort (Could, lavet):** gengiv billede, tekst og sted med `react-native-view-shot` og del med `expo-sharing`. Det gengivne billede har ingen EXIF/GPS (sikkerhedsrisiko 3).
 - **Diasshow (Could, lavet):** fuldskærmsviewer med autoplay-timer.
+
+### 8.2 Deling til visning og rejser i flere lande (tilføjet 18. nov. 2026)
+
+**Deling til visning.** En rejse kan deles med fx familie derhjemme, så de kan se den, men ikke lægge noget op.
+
+- **Rolle:** `TripMember.role` har fået værdien `viewer`. En viewer kan læse (`trips.get`, `trips.members`, `posts.list`, `posts.get`) og får signerede billed-links som alle andre med adgang.
+- **Spærringen ligger på serveren:** `posts.create/update/delete` bygger på `tripContributorProcedure` (FORBIDDEN for en viewer), og `POST /api/uploads` svarer 403. Appen skjuler desuden "+" og opret-knapperne, men det er kun brugervenlighed.
+- **To koder pr. rejse:** invitationskoden (`inviteCode`, giver `member`) og koden til deling (`viewCode`, giver `viewer`). Samme format og samme "Tilslut med kode"-skærm; serveren afgør, hvilken slags koden er. Ejeren laver og stopper dem hver for sig under "Invitér eller del".
+- **Koderne deler navnerum:** en kode må aldrig findes i begge kolonner, for så kunne en kode til deling give lov til at lægge op. Databasen sikrer kun hver kolonne for sig, så `createCode` tjekker og gemmer under en Postgres-lås (`pg_advisory_xact_lock`).
+- **Skift af rolle:** en viewer, der bruger invitationskoden, bliver medlem. Ingen mister adgang ved at bruge en kode til deling (ejer og medlem beholder deres rolle).
+- **Gætteforsøg:** `join` har de samme grænser som før, og de gælder begge slags koder.
+
+**Flere lande.** En rundrejse kan gå gennem flere lande.
+
+- `Trip.countryCode` er erstattet af listen `countryCodes` (1–20 lande i besøgsrækkefølge, uden dubletter). Migrationen `20261118120000_trip_countries_view_code` flytter det gamle land over i listen.
+- "Ny rejse" lader brugeren vælge flere lande. Frimærket viser det første land og "+N", og headeren viser op til tre landestempler.
+- Et indlæg får stadig sit eget land ud fra positionen. Uden position får det kun rejsens land, når rejsen har præcis ét land; ellers er landet ukendt, indtil stedet sættes.
+- Stedsøgningen ("Sæt sted") foretrækker alle rejsens lande.
+- **Bagudkompatibilitet:** ældre app-versioner kan stadig sende ét `countryCode` ved oprettelse, og svaret indeholder stadig `countryCode` (det første land).
 
 ### 8.1 Login med Apple og Google (tilføjet 18. nov. 2026)
 
@@ -623,3 +643,29 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 **Mangler**
 - Klient-ID'er og nøgler er ikke oprettet hos Google og Apple, så selve login er ikke afprøvet mod udbyderne. Apple kræver Apple Developer Program.
 - Webvisningen (`apps/web`) har ikke fået knapperne.
+
+### 18. nov. 2026: deling til visning og flere lande pr. rejse
+
+**Lavet** (se afsnit 8.2)
+- **Server:** rollen `viewer`, `tripContributorProcedure`, spærring i upload-routen, `viewCode` og `access` på `invites.createCode/revokeCode`, `countryCodes` på rejser. Migration `20261118120000_trip_countries_view_code`.
+- **App:**
+  - "Invitér eller del" har to kort: invitationskode til medrejsende og kode til deling (kun visning).
+  - En delt rejse er mærket "Kun visning" i headeren, på frimærket og i rejsevælgeren, og gruppen viser, hvem der kun kan se.
+  - "+" gemmer aldrig på en delt rejse: nye indlæg forvælges til en af brugerens egne rejser, og har man ingen, forklarer arket det. Opret-knapperne på tomme skærme er skjult på en delt rejse.
+  - "Ny rejse" kan have flere lande. Lokal SQLite er v4 (`countryCode` omdøbt til `countryCodes`, ny kolonne `viewCode`).
+- **Tests:** ny fil `sharing` (17 tests): en viewer kan se, men får FORBIDDEN/403 på indlæg, upload, koder og rejsens indstillinger; koden giver kun adgang til én rejse; roller ændres kun opad; stop af deling; de to koder falder aldrig sammen; flere lande med validering og bagudkompatibilitet; den lokale migration fra v3.
+
+**Verificeret**
+- Typecheck af alle pakker.
+- Servertests: 124 af 134 består. De 10, der fejler, er video-testene: `ffmpeg.exe` mangler i `node_modules/ffmpeg-static` på udviklingsmaskinen (binæren hentes af pakkens install-script), så de kunne ikke køres. De berører ikke denne ændring, men skal køres igen, når binæren er hentet (`npm rebuild ffmpeg-static`).
+
+**Ikke afprøvet**
+- Skærmene er ikke kørt i emulator eller på en telefon efter ændringen (hverken de to koder, "Kun visning" eller landevælgeren).
+
+**Rækkefølge ved deploy:** serveren skal deployes før appen. En ny app mod en ældre server får rejser uden `countryCodes` og kan ikke gemme dem. Lokalt kræver det `npm run db:migrate:deploy -w @rejsedagbog/db`.
+
+**Kendte begrænsninger**
+- Ejeren kan ikke fjerne en, rejsen er delt med, eller ændre en rolle i hånden (samme begrænsning som for medlemmer). Stop af deling lukker kun for nye.
+- "N i gruppen" tæller også dem, der kun kan se.
+- Landene på en eksisterende rejse kan ikke rettes i appen (`trips.update` findes, men der er ingen skærm til det).
+- En ældre app-version viser en delt rejse som en almindelig grupperejse; forsøg på at lægge op afvises af serveren.

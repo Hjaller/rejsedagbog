@@ -3,7 +3,7 @@ import { postCreateInput, postListInput, postRefInput, postUpdateInput } from "@
 import { TRPCError } from "@trpc/server";
 
 import { postInclude, toPostDto } from "../dto";
-import { router, tripMemberProcedure } from "../index";
+import { router, tripContributorProcedure, tripMemberProcedure } from "../index";
 import { enrich } from "../services/enrich";
 
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Indlægget findes ikke" });
@@ -37,7 +37,7 @@ export const postsRouter = router({
    * Idempotent upsert på appens UUID. Mangler sted/vejr (oprettet offline),
    * beriges indlægget her ud fra koordinater og tidspunkt.
    */
-  create: tripMemberProcedure.input(postCreateInput).mutation(async ({ ctx, input }) => {
+  create: tripContributorProcedure.input(postCreateInput).mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
 
     const existing = await ctx.db.post.findUnique({ where: { id: input.id }, include: postInclude });
@@ -67,8 +67,10 @@ export const postsRouter = router({
 
     const trip = await ctx.db.trip.findUniqueOrThrow({
       where: { id: input.tripId },
-      select: { countryCode: true },
+      select: { countryCodes: true },
     });
+    // Uden position kendes landet kun, når rejsen har ét land.
+    const tripCountry = trip.countryCodes.length === 1 ? trip.countryCodes[0]! : null;
 
     const post = await ctx.db.post.create({
       data: {
@@ -81,7 +83,7 @@ export const postsRouter = router({
         lon: input.lon ?? null,
         placeName: enrichment?.placeName ?? null,
         weather: (enrichment?.weather ?? undefined) as Prisma.InputJsonValue | undefined,
-        countryCode: enrichment?.countryCode ?? trip.countryCode,
+        countryCode: enrichment?.countryCode ?? tripCountry,
         media: input.mediaId ? { connect: { id: input.mediaId } } : undefined,
       },
       include: postInclude,
@@ -93,7 +95,7 @@ export const postsRouter = router({
    * Kun forfatteren kan redigere. "Seneste ændring vinder" via updatedAt.
    * Med en ny position (sat i hånden) findes sted og vejr på ny.
    */
-  update: tripMemberProcedure.input(postUpdateInput).mutation(async ({ ctx, input }) => {
+  update: tripContributorProcedure.input(postUpdateInput).mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
     const post = await ctx.db.post.findFirst({
       where: { id: input.postId, tripId: input.tripId, deletedAt: null },
@@ -130,7 +132,7 @@ export const postsRouter = router({
    * Soft delete + sletning af billederne i bucket'en. Kun forfatteren.
    * Rækken bliver stående som tombstone, men tekst, position, sted og vejr fjernes.
    */
-  delete: tripMemberProcedure.input(postRefInput).mutation(async ({ ctx, input }) => {
+  delete: tripContributorProcedure.input(postRefInput).mutation(async ({ ctx, input }) => {
     const post = await ctx.db.post.findFirst({
       where: { id: input.postId, tripId: input.tripId },
       select: { authorId: true, deletedAt: true, media: { select: { id: true, key: true, thumbKey: true } } },

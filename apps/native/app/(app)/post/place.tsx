@@ -61,7 +61,7 @@ export default function SetPlaceScreen() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const search = useMutation({
-    mutationFn: (q: string) => trpcClient.enrich.searchPlaces.mutate({ query: q, countryCode: trip?.countryCode }),
+    mutationFn: (q: string) => trpcClient.enrich.searchPlaces.mutate({ query: q, countryCodes: trip?.countryCodes }),
     onSuccess: (r) => setResults(r),
   });
 
@@ -181,7 +181,7 @@ export default function SetPlaceScreen() {
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={runSearch}
-            placeholder={trip?.countryCode ? "Søg efter sted, fx en by eller seværdighed" : "Søg efter sted"}
+            placeholder={trip?.countryCodes.length ? "Søg efter sted, fx en by eller seværdighed" : "Søg efter sted"}
             placeholderTextColor={p.textMuted}
             returnKeyType="search"
             autoCorrect={false}

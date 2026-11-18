@@ -9,7 +9,10 @@ import { useTrips } from "@/lib/local-db/queries";
 import { radius, space, typo, usePalette } from "@/lib/theme";
 import { useTripMembers, type TripMember } from "@/lib/trip-members";
 
-/** Hvem der er med på rejsen (grupperejser). Ejeren kan herfra invitere flere. */
+/**
+ * Hvem der er med på rejsen, og hvem den er delt med (kan kun se). Ejeren kan herfra
+ * invitere flere eller dele rejsen.
+ */
 export default function MembersScreen() {
   const p = usePalette();
   const router = useRouter();
@@ -82,14 +85,16 @@ export default function MembersScreen() {
         </Text>
       ) : isOwner ? (
         <Button
-          label={trip.inviteCode ? "Vis invitationskode" : "Invitér flere"}
+          label={trip.inviteCode || trip.viewCode ? "Vis koder" : "Invitér eller del rejsen"}
           icon="person-add-outline"
           variant={list.length > 1 ? "secondary" : "primary"}
           onPress={() => router.push({ pathname: "/trip/invite/[id]", params: { id: trip.id } })}
         />
       ) : (
         <Text style={{ color: p.textMuted, fontSize: 15, lineHeight: 21 }}>
-          Kun rejsens ejer kan invitere flere.
+          {trip.role === "viewer"
+            ? "Rejsen er delt med dig. Du kan se indlæg og billeder, men ikke lægge noget op."
+            : "Kun rejsens ejer kan invitere flere eller dele rejsen."}
         </Text>
       )}
     </ScrollView>
@@ -102,7 +107,7 @@ function MemberRow({ member, isYou, last }: { member: TripMember; isYou: boolean
   return (
     <View
       accessible
-      accessibilityLabel={`${member.name}${isYou ? ", dig" : ""}${member.role === "owner" ? ", ejer" : ""}`}
+      accessibilityLabel={`${member.name}${isYou ? ", dig" : ""}${member.role === "owner" ? ", ejer" : member.role === "viewer" ? ", kan kun se" : ""}`}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -130,10 +135,14 @@ function MemberRow({ member, isYou, last }: { member: TripMember; isYou: boolean
           {isYou ? <Text style={{ color: p.textMuted, fontWeight: "400" }}> (dig)</Text> : null}
         </Text>
         <Text style={{ color: p.textMuted, fontSize: 13 }}>
-          {member.role === "owner" ? "Har oprettet rejsen" : `Med siden ${formatRelative(member.joinedAt)}`}
+          {member.role === "owner"
+            ? "Har oprettet rejsen"
+            : member.role === "viewer"
+              ? `Har kunnet se rejsen siden ${formatRelative(member.joinedAt)}`
+              : `Med siden ${formatRelative(member.joinedAt)}`}
         </Text>
       </View>
-      {member.role === "owner" ? (
+      {member.role !== "member" ? (
         <View
           style={{
             paddingHorizontal: space.sm,
@@ -143,7 +152,7 @@ function MemberRow({ member, isYou, last }: { member: TripMember; isYou: boolean
             borderColor: p.borderStrong,
           }}
         >
-          <Text style={{ color: p.textMuted, fontSize: 12 }}>Ejer</Text>
+          <Text style={{ color: p.textMuted, fontSize: 12 }}>{member.role === "owner" ? "Ejer" : "Kan kun se"}</Text>
         </View>
       ) : null}
     </View>

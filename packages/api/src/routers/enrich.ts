@@ -15,7 +15,8 @@ export const enrichRouter = router({
   /** Søg efter et sted at sætte på et indlæg. Mutation af samme grund som preview. */
   searchPlaces: protectedProcedure.input(placeSearchInput).mutation(async ({ ctx, input }) => {
     try {
-      return await searchPlaces(input.query, input.countryCode, ctx.session.user.id);
+      const countries = input.countryCodes?.length ? input.countryCodes : input.countryCode ? [input.countryCode] : [];
+      return await searchPlaces(input.query, countries, ctx.session.user.id);
     } catch (err) {
       console.warn("[enrich.searchPlaces] fejlede:", err);
       throw new TRPCError({
