@@ -10,6 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.leth.rejsepost",
+      "entitlements": {
+        "com.apple.developer.applesignin": ["Default"]
+      },
       "infoPlist": {
         "CFBundleDevelopmentRegion": "da",
         "CFBundleLocalizations": [

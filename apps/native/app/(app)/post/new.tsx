@@ -5,7 +5,7 @@ import * as Crypto from "expo-crypto";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
 import { useNetworkState } from "expo-network";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
@@ -59,6 +59,8 @@ const REMEASURE_WAIT_MS = 4_000;
 /** Har brugeren sagt "Ikke nu" til placering, spørges der igen efter så mange dage. */
 const EXPLAIN_AGAIN_AFTER_MS = 14 * 24 * 60 * 60_000;
 const EXPLAINED_KEY = "locationExplainedAt";
+/** Kommer der intet signal om, at skærmen er gledet ind, åbnes kameraet alligevel efter så længe. */
+const APPEAR_WAIT_MS = 1_000;
 
 type SavedPost = {
   id: string;
@@ -126,6 +128,31 @@ export default function NewPostScreen() {
   const [textError, setTextError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const started = useRef(false);
+
+  // iOS kan ikke vise kameraet eller albummet, mens arket bag "+" glider væk og denne skærm
+  // glider ind: forsøget forsvinder uden fejl, og skærmen bliver stående på ventehjulet.
+  // Derfor ventes der, til skærmen er helt fremme.
+  const navigation = useNavigation();
+  const [shown] = useState(() => {
+    let resolve = () => {};
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  });
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("transitionEnd" as never, ((e: { data?: { closing?: boolean } }) => {
+      if (!e.data?.closing) shown.resolve();
+    }) as never);
+    const timer = setTimeout(shown.resolve, APPEAR_WAIT_MS);
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, [navigation, shown]);
+
+  /** Tæller forsøg, så et svar fra et kamera eller album, brugeren har lukket skærmen for, ikke gemmes. */
+  const pickAttempt = useRef(0);
 
   // Med "Alle rejser" valgt forvælges rejsen, der er i gang (ellers den nyeste).
   const trip = trips.find((t) => t.id === tripId) ?? defaultTrip;
@@ -252,7 +279,9 @@ export default function NewPostScreen() {
     // GPS'en startes, mens kameraet er åbent, så positionen som regel er klar, når billedet er taget.
     const openedAt = Date.now();
     let fix = startFix(perm, CAPTURE_MAX_AGE_MS);
+    const attempt = ++pickAttempt.current;
     const result = await capture(kind);
+    if (attempt !== pickAttempt.current) return;
     if (result.status === "ok") {
       // Har kameraet været åbent længe (fx i et tog), er målingen fra da det åbnede for gammel.
       // Så måles der igen; kommer den nye ikke i tide, bruges den gamle.
@@ -271,7 +300,9 @@ export default function NewPostScreen() {
     const from = phase;
     setPhase({ kind: "picking" });
     const fix = startFix(perm, SCREEN_OPEN_MAX_AGE_MS);
+    const attempt = ++pickAttempt.current;
     const result = await pickFromAlbum();
+    if (attempt !== pickAttempt.current) return;
     if (result.status === "ok") {
       const first = result.rejected[0];
       if (result.media.length === 0 && first) {
@@ -287,10 +318,15 @@ export default function NewPostScreen() {
     else setPhase({ kind: "choose", reason: "albumUnavailable" });
   };
 
-  const openSource = (perm: LocationPermission) => {
+  const openSource = async (perm: LocationPermission) => {
     // På web må kameraet og albummet kun åbnes direkte fra et tryk.
-    if (process.env.EXPO_OS === "web") setPhase({ kind: "choose", reason: "web" });
-    else if (initialSource === "album") void openAlbum(perm);
+    if (process.env.EXPO_OS === "web") {
+      setPhase({ kind: "choose", reason: "web" });
+      return;
+    }
+    setPhase({ kind: "picking" });
+    await shown.promise;
+    if (initialSource === "album") void openAlbum(perm);
     else void openCamera(perm, initialSource === "video" ? "video" : "photo");
   };
 
@@ -313,7 +349,7 @@ export default function NewPostScreen() {
           return;
         }
       }
-      openSource(perm);
+      void openSource(perm);
     })();
     // Kører én gang, når rejserne er hentet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -323,7 +359,7 @@ export default function NewPostScreen() {
     await setMeta(db, EXPLAINED_KEY, new Date().toISOString());
     const perm = allow ? await requestLocationPermission() : locationPerm;
     setLocationPerm(perm);
-    openSource(perm);
+    void openSource(perm);
   };
 
   /** Gemmer en ændret tekst (kun ved ét billede). Falsk, hvis teksten er ugyldig. */
@@ -422,7 +458,7 @@ export default function NewPostScreen() {
     return () => sub.remove();
   });
 
-  if (isLoading) return <DarkWait />;
+  if (isLoading) return <DarkWait onClose={() => router.back()} />;
 
   if (!trip) {
     return (
@@ -437,7 +473,15 @@ export default function NewPostScreen() {
   switch (phase.kind) {
     case "start":
     case "picking":
-      return <DarkWait />;
+      // Luk-knappen er vejen ud, hvis kameraet eller albummet alligevel ikke åbner.
+      return (
+        <DarkWait
+          onClose={() => {
+            pickAttempt.current++;
+            void close();
+          }}
+        />
+      );
     case "saving":
       return (
         <DarkWait
@@ -822,15 +866,16 @@ function SavedView({
             }}
           >
             <Button
-              label={source === "album" ? "Vælg flere" : source === "video" ? "Optag en video mere" : "Tag et billede mere"}
+              // Korte tekster, så knappen bliver på én linje ved siden af "Færdig".
+              label={source === "album" ? "Vælg flere" : source === "video" ? "Optag en mere" : "Tag et mere"}
               icon={source === "album" ? "images-outline" : source === "video" ? "videocam-outline" : "camera-outline"}
               variant="secondary"
               size="lg"
               onPress={onAnother}
               disabled={busy}
-              style={{ flex: 1 }}
+              style={{ flex: 3 }}
             />
-            <Button label="Færdig" size="lg" onPress={onDone} loading={busy} style={{ flex: 1 }} />
+            <Button label="Færdig" size="lg" onPress={onDone} loading={busy} style={{ flex: 2 }} />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -1040,7 +1085,8 @@ function countLabel(items: { kind: MediaKind }[]): string {
 }
 
 /** Mørk skærm, mens telefonens kamera er åbent eller billedet gemmes. */
-function DarkWait({ uri, label }: { uri?: string; label?: string }) {
+function DarkWait({ uri, label, onClose }: { uri?: string; label?: string; onClose?: () => void }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: "#111110", alignItems: "center", justifyContent: "center", gap: space.md }}>
       <StatusBar style="light" />
@@ -1054,6 +1100,27 @@ function DarkWait({ uri, label }: { uri?: string; label?: string }) {
       ) : null}
       <ActivityIndicator color="#FFFFFF" />
       {label ? <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>{label}</Text> : null}
+      {onClose ? (
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Luk"
+          hitSlop={8}
+          style={({ pressed }) => ({
+            position: "absolute",
+            top: insets.top + space.sm,
+            left: space.sm,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed ? "rgba(255,255,255,0.16)" : "transparent",
+          })}
+        >
+          <Ionicons name="close" size={26} color="#FFFFFF" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

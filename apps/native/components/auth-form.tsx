@@ -3,6 +3,7 @@ import * as Linking from "expo-linking";
 import { Link } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/button";
 import { TextField } from "@/components/text-field";
@@ -18,6 +19,7 @@ const SOCIAL_NAMES: Record<SocialProvider, string> = { apple: "Apple", google: "
 /** Dansk login/opret konto med e-mail, Apple eller Google. Valideringen deles med serveren via @rejsedagbog/shared. */
 export function AuthForm({ mode }: { mode: Mode }) {
   const p = usePalette();
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -93,8 +95,19 @@ export function AuthForm({ mode }: { mode: Mode }) {
     <KeyboardAvoidingView behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
       <ScrollView
         style={{ backgroundColor: p.background }}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: space.xl }}
-        contentInsetAdjustmentBehavior="automatic"
+        // Sikkerhedszonen lægges i indholdet. Lagt uden om det af systemet blev indholdet højere
+        // end skærmen, så siden kunne rulles, selvom alt var synligt.
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          paddingHorizontal: space.xl,
+          paddingTop: insets.top + space.xl,
+          paddingBottom: insets.bottom + space.xl,
+        }}
+        contentInsetAdjustmentBehavior="never"
+        // Ruller kun, når indholdet ikke kan være der (lille skærm, eller tastaturet er fremme).
+        alwaysBounceVertical={false}
+        overScrollMode="never"
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ width: "100%", maxWidth: 420, alignSelf: "center", gap: space.lg }}>
