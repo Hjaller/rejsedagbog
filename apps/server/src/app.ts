@@ -95,7 +95,7 @@ export async function buildApp(deps: AppDeps) {
   const getSession = (headers: Record<string, string | string[] | undefined>) =>
     deps.auth.api.getSession({ headers: fromNodeHeaders(headers) });
 
-  registerAuthRoutes(app, deps.auth);
+  await registerAuthRoutes(app, deps.auth);
 
   registerUploadRoute(app, {
     db: deps.db,

@@ -63,7 +63,7 @@ apps/web     (Next.js)                         ──┼─ tRPC + /api/auth/* +
                                                  │            PostgreSQL (Prisma)   S3-kompatibel bucket   Open-Meteo / Nominatim /
                                                  │              (Docker)            (ekstern, privat)      REST Countries
 packages/api     tRPC-routere + adgangstjek
-packages/auth    Better Auth-konfiguration (expo-plugin)
+packages/auth    Better Auth-konfiguration (expo-plugin, login med e-mail, Apple og Google)
 packages/db      Prisma-skema og -klient
 packages/shared  (ny) Zod-skemaer, konstanter og typer, som app, web og server deler
 packages/ui      shadcn-komponenter til web
@@ -293,6 +293,29 @@ Kamera- og lokationstilladelser beder kun om "mens appen bruges" og spørges fø
 - **Video (Could, lavet):** `expo-image-picker` med `videoMaxDuration: 30`, `Media.kind = 'video'`, en størrelsesgrænse på upload og `expo-video` til afspilning. Serveren fjerner videoens metadata (GPS) med ffmpeg. Se status 16. nov.
 - **Postkort (Could, lavet):** gengiv billede, tekst og sted med `react-native-view-shot` og del med `expo-sharing`. Det gengivne billede har ingen EXIF/GPS (sikkerhedsrisiko 3).
 - **Diasshow (Could, lavet):** fuldskærmsviewer med autoplay-timer.
+
+### 8.1 Login med Apple og Google (tilføjet 18. nov. 2026)
+
+Ud over e-mail og adgangskode kan man logge ind med Apple og Google. Det går gennem Better Auths `socialProviders` og Expo-plugin: appen kalder `authClient.signIn.social`, udbyderens login åbner i telefonens browser (`expo-web-browser`), og serveren sender sessionen tilbage til appen i et deep link (`rejsedagbog://`). Der er ingen nye native moduler, så et eksisterende build kan bruges, og de samme knapper virker på Android, iOS og web.
+
+- **Slået til pr. udbyder:** en udbyder er kun aktiv, når dens miljøvariabler er sat på serveren. Ellers svarer serveren 404, og appen viser "ikke sat op på serveren endnu".
+- **Ingen automatisk sammenkobling:** har man en konto med e-mail og adgangskode, kan man ikke logge ind i den med Google eller Apple på samme e-mail. Appen bekræfter ikke e-mails, så en sammenkobling ville lade en fremmed oprette en konto i ens e-mail og få adgang, når man selv logger ind. Better Auth afviser det som standard (`requireLocalEmailVerified`).
+- **Apples svar:** Apple sender brugeren tilbage med en formular-POST. Fastify tager nu imod `application/x-www-form-urlencoded` på `/api/auth/*` (og kun dér).
+- **Apples client secret** er en JWT, som serveren signerer med `.p8`-nøglen ved opstart. Den gælder i 180 dage, så serveren skal genstartes mindst hvert halve år.
+- **Kan ikke testes mod `localhost`:** Apple kræver HTTPS, og Google skal kende redirect-adressen. Test mod den deployede server.
+
+**Opsætning hos Google** (Google Cloud Console → APIs & Services → Credentials):
+1. Opret en OAuth-klient af typen *Web application* (også til appen, fordi login sker i browseren).
+2. Authorized redirect URI: `https://api.example.com/api/auth/callback/google`.
+3. Sæt `GOOGLE_CLIENT_ID` og `GOOGLE_CLIENT_SECRET` på serveren.
+
+**Opsætning hos Apple** (kræver Apple Developer Program; Certificates, Identifiers & Profiles):
+1. Slå *Sign in with Apple* til på App ID'et `dev.leth.rejsepost`.
+2. Opret et *Service ID*, fx `dev.leth.rejsepost.login`, med domænet `api.example.com` og Return URL `https://api.example.com/api/auth/callback/apple`. Det er `APPLE_CLIENT_ID`.
+3. Opret en nøgle med *Sign in with Apple*, og hent `.p8`-filen (kan kun hentes én gang). Nøglens ID er `APPLE_KEY_ID`, og filens indhold er `APPLE_PRIVATE_KEY` (på én linje med `\n` som linjeskift).
+4. `APPLE_TEAM_ID` står under Membership.
+
+Variablerne er beskrevet i `apps/server/.env.schema` og skal sættes i Coolify.
 
 ---
 
@@ -589,3 +612,14 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - `eas init` (opretter EAS-projektet på en Expo-konto og skriver `projectId` i `app.json`) og det første build pr. platform.
 - iOS kræver Apple Developer Program; Google Play kræver en udviklerkonto.
 - Butiksmateriale (skærmbilleder, beskrivelse, privatlivspolitik) er ikke lavet.
+
+### 18. nov. 2026: login med Apple og Google
+
+**Lavet** (se afsnit 8.1)
+- **Server:** `packages/auth` har Google og Apple som `socialProviders`, slået til af `GOOGLE_*` og `APPLE_*`. Auth-ruten tager imod Apples formular-svar. Serveren logger ved opstart, hvilke loginmetoder der er aktive.
+- **App:** "Fortsæt med Apple" og "Fortsæt med Google" på både login og opret konto. Lukker brugeren browseren, eller afviser serveren, vises en besked i stedet for, at der intet sker.
+- **Tests:** `social-login` (5 tests): login-adressen til Google og Apple, Apples formular-svar, at formular-data kun modtages på `/api/auth/*`, og 404 når en udbyder ikke er sat op.
+
+**Mangler**
+- Klient-ID'er og nøgler er ikke oprettet hos Google og Apple, så selve login er ikke afprøvet mod udbyderne. Apple kræver Apple Developer Program.
+- Webvisningen (`apps/web`) har ikke fået knapperne.

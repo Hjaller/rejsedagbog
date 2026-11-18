@@ -12,6 +12,7 @@
     "@better-auth/expo": "1.7.12",
     "@rejsedagbog/db": "*",
     "better-auth": "1.7.12",
+    "jose": "^6.2.17",
     "zod": "^4.5.4"
   },
   "devDependencies": {

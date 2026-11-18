@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { MediaStorage } from "@rejsedagbog/api/storage";
-import { createAuth } from "@rejsedagbog/auth";
+import { createAuth, type AuthConfig } from "@rejsedagbog/auth";
 import { createPrismaClient, type Database } from "@rejsedagbog/db";
 import sharp from "sharp";
 
@@ -38,6 +38,8 @@ export type TestContext = {
 
 export async function createTestApp(
   options: Pick<AppDeps, "trustProxy" | "logger"> = {},
+  /** Fx GOOGLE_* og APPLE_* for at slå login med Google og Apple til. */
+  authEnv: Partial<AuthConfig> = {},
 ): Promise<TestContext> {
   const db = createPrismaClient({ DATABASE_URL: TEST_DATABASE_URL });
   const auth = createAuth(
@@ -45,6 +47,7 @@ export async function createTestApp(
       BETTER_AUTH_URL: "http://localhost:3000",
       BETTER_AUTH_SECRET: "test-secret-som-er-mindst-32-tegn-lang",
       CORS_ORIGIN: ORIGIN,
+      ...authEnv,
     },
     db,
   );

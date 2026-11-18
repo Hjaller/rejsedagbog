@@ -1,4 +1,5 @@
 import { signInInput, signUpInput } from "@rejsedagbog/shared";
+import * as Linking from "expo-linking";
 import { Link } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
@@ -10,8 +11,11 @@ import { space, typo, usePalette } from "@/lib/theme";
 import { queryClient } from "@/utils/trpc";
 
 type Mode = "sign-in" | "sign-up";
+type SocialProvider = "apple" | "google";
 
-/** Dansk login/opret konto. Valideringen deles med serveren via @rejsedagbog/shared. */
+const SOCIAL_NAMES: Record<SocialProvider, string> = { apple: "Apple", google: "Google" };
+
+/** Dansk login/opret konto med e-mail, Apple eller Google. Valideringen deles med serveren via @rejsedagbog/shared. */
 export function AuthForm({ mode }: { mode: Mode }) {
   const p = usePalette();
   const [name, setName] = useState("");
@@ -19,6 +23,39 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [socialPending, setSocialPending] = useState<SocialProvider | null>(null);
+
+  /** Åbner udbyderens login i en browser; Better Auths Expo-klient henter sessionen, når den lukker. */
+  const signInWith = async (provider: SocialProvider) => {
+    setError(null);
+    setSocialPending(provider);
+    try {
+      const { error: failure } = await authClient.signIn.social({
+        provider,
+        // I appen et deep link (rejsedagbog://), på web sidens egen adresse.
+        callbackURL: Linking.createURL("/"),
+      });
+      if (failure) {
+        setError(socialErrorMessage(provider, failure));
+        return;
+      }
+      // På web er browseren nu på vej til udbyderen.
+      if (process.env.EXPO_OS === "web") return;
+      // Klienten siger ikke, om brugeren fortrød, eller om serveren afviste, så vi ser efter en session.
+      const { data: session } = await authClient.getSession();
+      if (session?.user) queryClient.clear();
+      else {
+        setError(
+          "Login blev ikke gennemført. Har du allerede en konto med samme e-mail, skal du logge ind med din adgangskode.",
+        );
+      }
+    } catch {
+      setError("Kunne ikke forbinde til serveren. Tjek din internetforbindelse.");
+    } finally {
+      setSocialPending(null);
+    }
+  };
 
   const submit = async () => {
     setError(null);
@@ -133,8 +170,36 @@ export function AuthForm({ mode }: { mode: Mode }) {
             label={mode === "sign-up" ? "Opret konto" : "Log ind"}
             onPress={submit}
             loading={submitting}
+            disabled={socialPending !== null}
             size="lg"
           />
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: p.border }} />
+            <Text style={[typo.eyebrow, { color: p.textMuted }]}>ELLER</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: p.border }} />
+          </View>
+
+          <View style={{ gap: space.sm }}>
+            <Button
+              variant="secondary"
+              icon="logo-apple"
+              label="Fortsæt med Apple"
+              onPress={() => void signInWith("apple")}
+              loading={socialPending === "apple"}
+              disabled={submitting || socialPending !== null}
+              size="lg"
+            />
+            <Button
+              variant="secondary"
+              icon="logo-google"
+              label="Fortsæt med Google"
+              onPress={() => void signInWith("google")}
+              loading={socialPending === "google"}
+              disabled={submitting || socialPending !== null}
+              size="lg"
+            />
+          </View>
 
           <Link href={mode === "sign-up" ? "/sign-in" : "/sign-up"} replace asChild>
             <Button
@@ -146,6 +211,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+function socialErrorMessage(provider: SocialProvider, error: { status: number }): string {
+  if (error.status === 429) return "For mange forsøg. Vent et øjeblik, og prøv igen.";
+  // Serveren kender kun de udbydere, der er sat miljøvariabler for.
+  if (error.status === 404) return `Login med ${SOCIAL_NAMES[provider]} er ikke sat op på serveren endnu.`;
+  return "Noget gik galt. Prøv igen.";
 }
 
 function authErrorMessage(mode: Mode, error: { status: number; message?: string }): string {

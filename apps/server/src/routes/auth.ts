@@ -6,7 +6,17 @@ import type { Auth } from "../app";
 export const CLIENT_IP_HEADER = "x-rejsepost-client-ip";
 
 /** Videresender /api/auth/* til Better Auth. */
-export function registerAuthRoutes(app: FastifyInstance, auth: Auth) {
+export async function registerAuthRoutes(root: FastifyInstance, auth: Auth) {
+  await root.register(async (app) => authRoutes(app, auth));
+}
+
+function authRoutes(app: FastifyInstance, auth: Auth) {
+  // Apple sender login-svaret som en formular (response_mode=form_post), som Fastify ellers
+  // afviser med 415. Den sendes uændret videre. Parseren gælder kun for /api/auth/*.
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_req, body, done) =>
+    done(null, body),
+  );
+
   app.route({
     method: ["GET", "POST"],
     url: "/api/auth/*",
@@ -25,7 +35,11 @@ export function registerAuthRoutes(app: FastifyInstance, auth: Auth) {
           new Request(url.toString(), {
             method: request.method,
             headers,
-            body: request.body ? JSON.stringify(request.body) : undefined,
+            body: !request.body
+              ? undefined
+              : typeof request.body === "string"
+                ? request.body
+                : JSON.stringify(request.body),
           }),
         );
         reply.status(response.status);

@@ -19,6 +19,8 @@ app.log.info(`Billedlager: ${storageKind}`);
 if (ENV.NODE_ENV === "production" && trustProxy === false) {
   app.log.warn("TRUST_PROXY er ikke sat – bag en proxy deler alle brugere samme rate limit.");
 }
+const socialLogins = Object.keys(auth.options.socialProviders ?? {});
+app.log.info(`Login med: e-mail${socialLogins.map((name) => `, ${name}`).join("")}`);
 if (!storage) app.log.warn("S3_* er ikke sat – billeder kan ikke uploades eller vises.");
 
 try {

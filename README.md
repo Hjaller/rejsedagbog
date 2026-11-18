@@ -41,7 +41,7 @@ CORS_ORIGIN=http://localhost:3001
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rejsedagbog
 ```
 
-En hemmelighed kan laves med `node -p "require('node:crypto').randomBytes(32).toString('hex')"`. Valgfrit: `S3_*` og `REST_COUNTRIES_API_KEY` (se `apps/server/.env.schema`). Ved deploy bag en reverse proxy skal `TRUST_PROXY` sættes til proxyens IP/CIDR, fx `172.16.0.0/12` i et Docker-netværk. Uden S3 gemmes billeder lokalt i `apps/server/.data/media` under udvikling.
+En hemmelighed kan laves med `node -p "require('node:crypto').randomBytes(32).toString('hex')"`. Valgfrit: `S3_*`, `REST_COUNTRIES_API_KEY` samt `GOOGLE_*` og `APPLE_*` til login med Google og Apple (se `apps/server/.env.schema` og afsnit 8.1 i `docs/udviklingsplan.md`). Ved deploy bag en reverse proxy skal `TRUST_PROXY` sættes til proxyens IP/CIDR, fx `172.16.0.0/12` i et Docker-netværk. Uden S3 gemmes billeder lokalt i `apps/server/.data/media` under udvikling.
 
 `apps/native/.env` (brug computerens LAN-IP, fordi `localhost` ikke virker fra en telefon):
 
