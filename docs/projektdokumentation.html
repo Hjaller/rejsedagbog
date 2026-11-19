@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<title>Rejsepost – projektdokumentation</title>
+<style>
+  @page { size: A4; margin: 15mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font: 8.7pt/1.36 "Segoe UI", Helvetica, Arial, sans-serif; color: #1c1b19; margin: 0; }
+  h1 { font: 600 19pt/1.1 Georgia, serif; margin: 0 0 1mm; }
+  h2 { font: 600 11.5pt/1.2 Georgia, serif; margin: 4.2mm 0 1.4mm; padding-bottom: .7mm; border-bottom: .3mm solid #c9c1b0; break-after: avoid; }
+  h3 { font-size: 8.9pt; margin: 2.4mm 0 .6mm; break-after: avoid; }
+  p { margin: 0 0 1.6mm; }
+  ul { margin: 0 0 1.6mm; padding-left: 4.4mm; }
+  li { margin-bottom: .5mm; }
+  .meta { color: #6b675f; margin-bottom: 3mm; }
+  table { border-collapse: collapse; width: 100%; margin: 1mm 0 2mm; font-size: 7.6pt; line-height: 1.3; }
+  th, td { border: .2mm solid #c9c1b0; padding: 1mm 1.4mm; vertical-align: top; text-align: left; }
+  th { background: #efe9dc; font-weight: 600; }
+  tr { break-inside: avoid; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 7.3pt; }
+  pre { background: #f6f1e7; border: .2mm solid #e4ddce; border-radius: 1.2mm; padding: 1.6mm 2mm; margin: 1mm 0 2mm; line-height: 1.3; white-space: pre-wrap; break-inside: avoid; }
+  figure { margin: 1.5mm 0 2mm; break-inside: avoid; }
+  figcaption { font-size: 7.4pt; color: #6b675f; margin-top: .8mm; }
+  .shots { display: flex; gap: 2.5mm; align-items: flex-start; }
+  .shots img { flex: none; border: .2mm solid #c9c1b0; border-radius: 1.2mm; display: block; }
+  .cols { display: flex; gap: 5mm; }
+  .cols > div { flex: 1; }
+  .s { white-space: nowrap; font-weight: 600; }
+  .new-page { break-before: page; }
+</style>
+</head>
+<body>
+
+<h1>Rejsepost – projektdokumentation</h1>
+<div class="meta">Hjalte Leth · cross-platform app med backend · 19. november 2026 · Repository: github.com/Hjaller/rejsedagbog · Bilag: kravspecifikation med wireframes (kravspec lite)</div>
+
+<h2>1. Problem og brugergruppe</h2>
+<p><b>Problem.</b> På en rejse ender billederne spredt på flere telefoner, og bagefter kan man ikke huske, hvor og hvornår de blev taget, eller hvordan vejret var. I udlandet er mobildata tit dyrt eller ustabilt, så en app, der kræver net i øjeblikket, bliver ikke brugt.</p>
+<p><b>Brugergruppe.</b> Unge og voksne, der rejser sammen: studieture, venneture og familieferier. Der er tre slags brugere på en rejse, og de svarer til appens roller: den, der opretter rejsen (<b>ejer</b>), dem, der rejser med og lægger billeder op (<b>medrejsende</b>), og familien derhjemme, som kun skal kunne se med (<b>kun visning</b>).</p>
+<p><b>Løsning.</b> Rejsepost er en rejsedagbog i React Native (Expo) til Android og iOS. Man tager et billede, og appen tilføjer selv sted, vejr og land ud fra position og tidspunkt. Indlæg gemmes først på telefonen og sendes, når der er net. Hver bruger har sin egen konto, og en rejses data tilhører rejsens medlemmer. Indlæg kan oprettes, læses, rettes og slettes gennem API'et.</p>
+
+<h2>2. Design</h2>
+<div class="cols">
+<div>
+<h3>Skitser og navigation</h3>
+<p>Wireframes for telefon (compact) og tablet i landskab (expanded) ligger i kravspecifikationen, side 7–10. Det færdige design følger dem i opbygning, men har fået et udtryk som et postkort (papirfarve, blæk og poststempel-rød), og profilen er flyttet fra bundbaren til en avatar i headeren, så der er plads til "+" i midten.</p>
+<p>Navigationen vælges ud fra vinduets bredde (<code>useBreakpoint</code>), ikke ud fra enhedstypen, så en foldbar telefon og et delt skærmbillede også får det rigtige layout:</p>
+<ul>
+  <li><b>Under 600 dp:</b> bundbar med fire faner og "+" i midten.</li>
+  <li><b>600–840 dp:</b> sidebar i venstre side, galleri med flere kolonner.</li>
+  <li><b>Over 840 dp:</b> sidebar og liste-detalje. Listen står til venstre, og det valgte indlæg vises til højre uden at skifte skærm. En tablet i landskab har plads til begge dele, og man slipper for at gå frem og tilbage mellem liste og indlæg.</li>
+</ul>
+<h3>Tema</h3>
+<p>Alle farver er tokens i én fil (<code>lib/palette.ts</code>) med et lyst og et mørkt sæt. Komponenterne henter dem med <code>usePalette()</code> og kender ikke selve farverne. Temaet følger telefonens indstilling.</p>
+</div>
+<div>
+<h3>Thumb zones</h3>
+<p>Det, man gør oftest, ligger nederst, hvor tommelfingeren når: "+" til nyt indlæg sidder midt i bundbaren, fanerne ligger ved siden af, og skærmenes primære knap ("Gem sted", "Tilslut rejse", "Opret rejse") står nederst. Sjældne og farlige handlinger (profil, log ud, slet) ligger øverst eller sidst på skærmen. Fra start til gemt billede er der tre tryk.</p>
+<h3>Tilgængelighed</h3>
+<ul>
+  <li><b>Trykfelter:</b> mindst 48 dp (dækker også iOS' 44 pt). Målt på emulatoren på 21 skærme, også i de to tablet-layouts.</li>
+  <li><b>Kontrast:</b> al tekst har mindst 4,5:1 mod alle flader i begge temaer. Det tjekkes af en automatisk test, som fandt to farver, der ikke holdt.</li>
+  <li><b>200 % skrift:</b> appen følger systemets skriftstørrelse. Afprøvet ved 200 %: intet overlapper, og tekster får flere linjer i stedet for at blive skåret af.</li>
+  <li><b>Skærmlæser:</b> knapper og billeder har rolle og dansk label. Ikke afprøvet med TalkBack/VoiceOver.</li>
+</ul>
+</div>
+</div>
+
+<figure>
+  <div class="shots">
+    <img src="screenshots/telefon-lys.png" style="height:46mm" alt="Tidslinje på telefon, lyst tema">
+    <img src="screenshots/telefon-moerk.png" style="height:46mm" alt="Tidslinje på telefon, mørkt tema">
+    <img src="screenshots/telefon-200-procent.png" style="height:46mm" alt="Tidslinje ved 200 % skrift">
+    <img src="screenshots/tablet-portraet.png" style="height:46mm" alt="Tablet i portræt med sidebar">
+    <img src="screenshots/tablet-landskab.png" style="height:46mm" alt="Tablet i landskab med sidebar og liste-detalje">
+  </div>
+  <figcaption>Fra venstre: telefon i lyst tema, mørkt tema og ved 200 % skrift (compact, 411 dp: bundbar). Tablet i portræt (medium, 750 dp: sidebar, én kolonne). Tablet i landskab (expanded, 1280 dp: sidebar, liste og det valgte indlæg).</figcaption>
+</figure>
+
+<h2 class="new-page">3. Arkitektur</h2>
+<figure>
+  <img src="arkitektur.png" style="width:100%" alt="Arkitekturdiagram">
+  <figcaption>App, API, database og tredjeparter. De stiplede kasser er tillidsgrænser: alt, der kommer fra brugerens enhed, valideres og adgangstjekkes på serveren.</figcaption>
+</figure>
+<p>Appen og serveren er skrevet i TypeScript i ét monorepo. tRPC deler typerne mellem app og API, og Zod-skemaerne i <code>packages/shared</code> bruges begge steder, så samme validering gælder i formularen og på serveren. Filer går gennem en almindelig REST-route, fordi tRPC ikke egner sig til upload. Billeder ligger i en privat bucket; API'et udleverer kun signerede links, der virker i 15 minutter, og kun til rejsens medlemmer. Kald til vejr og stednavne går gennem serveren, så API-nøgler bliver dér, og tjenesternes grænser kan overholdes samlet.</p>
+<p><b>Offline.</b> Et indlæg skrives altid først til SQLite på telefonen og lægges i en upload-kø. Køen sender ét indlæg ad gangen, når der er net. Indlæggets id laves i appen, og serveren gemmer med upsert, så et gentaget forsøg aldrig giver dubletter.</p>
+
+<h2>4. Trusselsmodel</h2>
+<p>Appen håndterer private billeder (kan vise personer), positioner, navne og e-mailadresser. Truslerne er fundet med STRIDE (<b>S</b>poofing, <b>T</b>ampering, <b>R</b>epudiation, <b>I</b>nformation disclosure, <b>D</b>enial of service, <b>E</b>levation of privilege) og koblet til OWASP Top 10 (2021), OWASP API Security Top 10 (2023) og OWASP Mobile Top 10 (2024).</p>
+<table>
+<tr><th style="width:4%">#</th><th style="width:27%">Trussel</th><th style="width:7%">STRIDE</th><th style="width:19%">OWASP</th><th>Modforanstaltning</th></tr>
+<tr><td>1</td><td><b>En bruger ændrer et rejse- eller indlægs-id i en forespørgsel</b> for at se, rette eller slette andres data</td><td class="s">I, T, E</td><td>API1 Broken Object Level Authorization · A01 Broken Access Control</td><td>Alle procedurer, der rører en rejse, bygger på <code>tripMemberProcedure</code>, som slår medlemskabet op i databasen ud fra sessionen. Svaret er "findes ikke", så id'er ikke kan bekræftes. Id'er er UUID'er. Rettelse og sletning kræver desuden, at man er forfatteren. Automatisk testet.</td></tr>
+<tr><td>2</td><td>En medrejsende eller en med "kun visning" kalder ejerens funktioner (slet rejse, lav koder) eller lægger billeder op</td><td class="s">E</td><td>API5 Broken Function Level Authorization · A01</td><td>Rollen læses på serveren: <code>tripOwnerProcedure</code> og <code>tripContributorProcedure</code>; upload-routen svarer 403 for "kun visning". At appen skjuler knapperne, regnes ikke som sikkerhed. Automatisk testet.</td></tr>
+<tr><td>3</td><td>Gæt af adgangskoder eller invitationskoder (6 tegn)</td><td class="s">S</td><td>A07 Identification and Authentication Failures · API2 Broken Authentication</td><td>Login: højst 5 forsøg pr. minut pr. IP, adgangskode på mindst 8 tegn, hashet med scrypt. Koder: 10 forsøg pr. bruger og 20 forkerte pr. IP pr. 10 minutter. Klientens IP kan ikke forfalskes med en header (<code>TRUST_PROXY</code>). Automatisk testet.</td></tr>
+<tr><td>4</td><td>Login-tokenet stjæles fra en tabt telefon eller aflyttes på et åbent wifi</td><td class="s">S, I</td><td>M9 Insecure Data Storage · M5 Insecure Communication · A02 Cryptographic Failures</td><td>Tokenet ligger i Keystore/Keychain (<code>expo-secure-store</code>), ikke i almindelig lagring, og udløber efter 7 dage uden brug. Al trafik er HTTPS med HSTS; et build nægter at tale med en <code>http://</code>-server. Webcookien er HttpOnly, Secure og SameSite=Lax.</td></tr>
+<tr><td>5</td><td>Hemmeligheder (database, auth-secret, S3-nøgler) havner i Git eller i appen</td><td class="s">I</td><td>A05 Security Misconfiguration · M1 Improper Credential Usage</td><td>Hemmeligheder findes kun som miljøvariabler på serveren. Appen kender kun API'ets adresse. <code>.env</code> er gitignored, og historikken er scannet med gitleaks (43 commits, ingen fund ud over en test-værdi). Serveren blokerer svar, der indeholder en hemmelig værdi (varlock).</td></tr>
+<tr><td>6</td><td>Position afsløres gennem billedets metadata, når billeder deles</td><td class="s">I</td><td>M6 Inadequate Privacy Controls</td><td>Serveren fjerner EXIF og GPS fra billeder (sharp) og videoer (ffmpeg) ved upload. Postkort, der deles ud af appen, er et nyt billede uden metadata. Automatisk testet.</td></tr>
+<tr><td>7</td><td>Fremmede henter billeder direkte fra lageret eller gennem et gammelt link</td><td class="s">I</td><td>A01 Broken Access Control</td><td>Bucket'en er privat (usigneret link giver 403). Links signeres pr. forespørgsel, virker i 15 minutter og gives kun til medlemmer.</td></tr>
+<tr><td>8</td><td>Ondsindet eller kæmpestor fil uploades, eller API'et overbelastes</td><td class="s">T, D</td><td>API4 Unrestricted Resource Consumption · A03 Injection</td><td>Filens indhold valideres (ikke kun filtypen), højst 15 MB pr. billede og 30 sekunders video, rate limit på upload (60/min) og API (300/min). Alt input valideres med Zod, og Prisma parametriserer SQL.</td></tr>
+<tr><td>9</td><td>En bruger nægter at have slettet eller ændret noget</td><td class="s">R</td><td>A09 Security Logging and Monitoring Failures</td><td>Serveren logger metode, sti og IP for hver forespørgsel (uden query-streng, så tokens og koordinater ikke havner i loggen). <b>Kendt mangel:</b> der er ingen audit-log pr. bruger.</td></tr>
+</table>
+<p><b>Største trussel er nr. 1.</b> Den er let at udføre (ret et id i en forespørgsel), den rammer det mest følsomme (private billeder), og den opstår, hvis blot ét endpoint glemmer tjekket. Derfor ligger tjekket ét sted, som alle rejse-procedurer skal bygge på, og derfor findes der en test, der prøver hver procedure som en fremmed bruger.</p>
+
+<h2>5. Sikkerhedsvalg</h2>
+<div class="cols">
+<div>
+<ul>
+  <li><b>Login:</b> Better Auth med e-mail og adgangskode. Adgangskoder gemmes aldrig i klartekst, men hashes med scrypt og et salt pr. bruger. scrypt er Better Auths standard og anbefales af OWASP sammen med Argon2id. Login med Google og Apple (OAuth 2.0) er bygget, men ikke sat op hos udbyderne.</li>
+  <li><b>Tokens:</b> en session pr. login, som udløber efter 7 dage og højst forlænges én gang i døgnet ved brug. I appen ligger tokenet i Keystore/Keychain. Der bruges serversessioner frem for JWT, så en session kan lukkes på serveren med det samme.</li>
+  <li><b>Autorisation:</b> afgøres altid på serveren ud fra sessionen og tabellen <code>TripMember</code>, aldrig ud fra noget, klienten sender. Roller: ejer, medrejsende, kun visning.</li>
+</ul>
+</div>
+<div>
+<ul>
+  <li><b>Lagring:</b> PostgreSQL, som ikke kan nås udefra. Billeder i en privat bucket i EU. På telefonen ligger indlæg i SQLite pr. bruger; kun tokenet er følsomt, og det ligger i secure store.</li>
+  <li><b>Hemmeligheder:</b> kun som miljøvariabler i Coolify. <code>.env.schema</code> beskriver variablerne uden værdier og markerer, hvilke der er følsomme.</li>
+  <li><b>Transport:</b> Traefik med TLS-certifikat foran containerne; <code>http://</code> sendes videre til <code>https://</code>.</li>
+</ul>
+<p><b>Kodeeksempel, der stopper trussel 1</b> (<code>packages/api/src/trip-access.ts</code>):</p>
+</div>
+</div>
+<pre>export async function assertTripMember(db, userId, tripId) {
+  const membership = await getTripMembership(db, userId, tripId);   // slår (tripId, userId) op i TripMember
+  if (!membership) {
+    // Samme svar, uanset om rejsen findes: en fremmed kan ikke gætte sig til gyldige id'er.
+    throw new TRPCError({ code: "NOT_FOUND", message: "Rejsen findes ikke" });
+  }
+  return membership;                                                // indeholder rollen: owner | member | viewer
+}</pre>
+<p><code>userId</code> kommer fra sessionen på serveren, og <code>tripId</code> fra forespørgslen. Ændrer bruger B id'et til bruger A's rejse, findes der ingen række i <code>TripMember</code>, og kaldet stopper, før der læses eller skrives data.</p>
+
+<h2>6. Test</h2>
+<p><b>Automatiske tests:</b> 199 tests (Vitest) kører mod den rigtige server og en testdatabase. De vigtigste:</p>
+<table>
+<tr><th style="width:22%">Område</th><th>Hvad der testes</th></tr>
+<tr><td><b>Adgang til andres data</b></td><td>To brugere, Sara og Jonas. Jonas prøver hver procedure på Saras rejse (hent, ret og slet rejse og indlæg, medlemsliste, koder, upload) og får "findes ikke"; uden login gives 401. Kontrol: slås adgangstjekket fra, fejler 9 af testene, så de fanger faktisk fejlen.</td></tr>
+<tr><td>Roller</td><td>"Kun visning" kan læse, men får afvist indlæg, upload, koder og rejsens indstillinger. Kun ejeren kan lave og stoppe koder. Kun forfatteren kan rette og slette et indlæg.</td></tr>
+<tr><td>Login og sessioner</td><td>429 efter 5 forkerte logins; IP-headeren kan ikke forfalskes; session udløber efter 7 dage, og en udløbet session afvises; cookie-attributter.</td></tr>
+<tr><td>Upload og privatliv</td><td>EXIF og GPS er fjernet fra billeder og video; falske filer (415) og for store filer (413) afvises; slettede indlæg ryddes for tekst og position.</td></tr>
+<tr><td>Synkronisering</td><td>Appens synkroniseringsmotor kører mod serveren: offline til online uden dubletter, retry uden ny upload, rettelser og sletninger offline.</td></tr>
+<tr><td>UI og transport</td><td>Kontrast for alle farvepar i begge temaer; HTTPS-kravet i appen; HSTS.</td></tr>
+</table>
+<p><b>Manuelle tests:</b> flytilstand (3 indlæg oprettet offline, appen genstartet, alle sendt uden dubletter, da nettet kom tilbage), trykfelter målt på emulatoren, 200 % skrift, lyst og mørkt tema, telefon samt tablet i portræt og landskab. <b>Ikke testet:</b> brugertest med andre personer, skærmlæser, iOS og en fysisk telefon.</p>
+
+<h2>7. Refleksion, arbejdsfordeling og brug af AI</h2>
+<p><b>Arbejdsfordeling.</b> Projektet er lavet af én person, så planlægning, design, kode, test og dokumentation er mit eget ansvar.</p>
+<p><b>Hvad gik godt.</b> At lægge adgangstjekket ét sted og skrive testen med to brugere tidligt betød, at nye funktioner (invitationskoder, deling til visning) fik sikkerheden med fra start. Offline-køen med id'er lavet i appen gjorde synkroniseringen simpel nok til at kunne testes automatisk.</p>
+<p><b>Hvad gik mindre godt.</b> Stakken har mange dele, og opsætning og native builds på Windows tog mere tid end planlagt. De alvorligste fejl blev først fundet, da appen kørte på en enhed (fx at upload af billeder fejlede på alle enheder), fordi testene kører i Node og ikke dækker appens skærme. Webversionen, brugertesten og skærmlæser-testen blev ikke nået, og jeg prioriterede video og postkort, som var mindre vigtige. Næste gang ville jeg teste på en fysisk telefon fra første uge og lave brugertesten, før jeg byggede ekstra funktioner.</p>
+<p><b>Brug af AI.</b> Jeg har brugt en AI-kodeassistent (Claude Code) gennem hele projektet: til at foreslå og skrive kode og tests, til at finde fejl, til en sikkerhedsgennemgang af API'et og til udkast til dokumentation og arkitekturdiagram. Kravene, teknologivalgene, datamodellen og prioriteringen har jeg selv besluttet, og jeg har læst og afprøvet koden, før den blev committet. AI'en tog flere gange fejl, fx i antagelser om biblioteker, og fejlene blev kun fundet ved at køre testene og appen. Jeg kan forklare den afleverede kode.</p>
+
+</body>
+</html>

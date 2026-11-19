@@ -1,0 +1,3 @@
+# Falske positiver fra gitleaks (se README, "Tjek for hemmeligheder").
+# Test-hemmeligheden til Better Auth i testhjælperen; bruges kun af testene mod testdatabasen.
+76dd51e667b353b9b9f59eed3df4710f89256707:apps/server/test/helpers.ts:generic-api-key:44

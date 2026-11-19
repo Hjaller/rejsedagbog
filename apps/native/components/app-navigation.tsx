@@ -52,7 +52,15 @@ function NavButton({ item, orientation, isFocused, ...props }: NavButtonProps) {
       })}
     >
       <Ionicons name={isFocused ? item.icon : item.iconOutline} size={24} color={color} />
-      <Text style={{ color, fontSize: 11, fontWeight: isFocused ? "700" : "500" }}>{item.label}</Text>
+      {/* Én linje: med stor skrift skaleres etiketten ned, til den passer i fanen, i stedet for at knække. */}
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.5}
+        style={{ alignSelf: "stretch", textAlign: "center", color, fontSize: 11, fontWeight: isFocused ? "700" : "500" }}
+      >
+        {item.label}
+      </Text>
       {isFocused && orientation === "side" ? (
         <View
           style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 3, borderRadius: 2, backgroundColor: p.accent }}

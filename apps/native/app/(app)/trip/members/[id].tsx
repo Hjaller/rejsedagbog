@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { formatRelative } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useTrips } from "@/lib/local-db/queries";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 import { useTripMembers, type TripMember } from "@/lib/trip-members";
 
 /**
@@ -130,7 +130,7 @@ function MemberRow({ member, isYou, last }: { member: TripMember; isYou: boolean
         <Text style={{ color: isYou ? p.onInk : p.text, fontSize: 17, fontWeight: "700" }}>{initial}</Text>
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={1}>
+        <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={scaledLines(1)}>
           {member.name}
           {isYou ? <Text style={{ color: p.textMuted, fontWeight: "400" }}> (dig)</Text> : null}
         </Text>

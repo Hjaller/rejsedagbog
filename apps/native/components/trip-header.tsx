@@ -9,7 +9,7 @@ import { ProfileButton } from "@/components/profile-button";
 import { PendingPill } from "@/components/sync-status";
 import { formatDateRange } from "@/lib/dates";
 import type { LocalTrip } from "@/lib/local-db/repo";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 
 /**
  * "🇯🇵 Japan 2026" pr. rejse-id til indlæggene, når alle rejser vises sammen;
@@ -107,10 +107,15 @@ export function TripHeader({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={title ? `${title}. Skift rejse` : "Vælg rejse"}
-              hitSlop={8}
-              style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, opacity: pressed ? 0.6 : 1 })}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                minHeight: MIN_TOUCH,
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
-              <Text numberOfLines={1} style={[typo.hero, { color: p.text, flexShrink: 1 }]}>
+              <Text numberOfLines={scaledLines(1)} style={[typo.hero, { color: p.text, flexShrink: 1 }]}>
                 {title ?? "Ingen rejse"}
               </Text>
               <Ionicons name="chevron-down" size={22} color={p.text} />
@@ -124,7 +129,7 @@ export function TripHeader({
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: 28 }}>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" }}>
             {allTrips ? (
-              <Text style={{ color: p.textMuted, fontSize: 14 }} numberOfLines={1}>
+              <Text style={{ color: p.textMuted, fontSize: 14 }} numberOfLines={scaledLines(1)}>
                 {allTripsSummary(allTrips)}
               </Text>
             ) : trip ? (
@@ -140,7 +145,11 @@ export function TripHeader({
                 ) : null}
                 {trip.memberCount > 1 ? (
                   <Link href={{ pathname: "/trip/members/[id]", params: { id: trip.id } }} asChild>
-                    <Pressable accessibilityRole="button" accessibilityHint="Se hvem der er med" hitSlop={8}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityHint="Se hvem der er med"
+                      style={{ minHeight: MIN_TOUCH, justifyContent: "center" }}
+                    >
                       <Text style={{ color: p.text, fontSize: 14, textDecorationLine: "underline" }}>
                         {trip.memberCount} i gruppen
                       </Text>

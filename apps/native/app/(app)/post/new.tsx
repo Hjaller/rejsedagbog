@@ -47,7 +47,7 @@ import {
   type PickedMedia,
   type VideoProblem,
 } from "@/lib/media";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 /** Så længe ventes der højst på positionen fra da billedet blev taget, før indlægget gemmes. */
@@ -682,10 +682,10 @@ function SavedView({
               <Ionicons name="checkmark" size={18} color={p.surface} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
+              <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={scaledLines(1)}>
                 {single ? `Gemt i ${tripName}` : `${countLabel(posts)} gemt i ${tripName}`}
               </Text>
-              <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
+              <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={scaledLines(1)}>
                 {online ? "Sendes til gruppen nu" : "Ligger på telefonen · sendes, når du har net"}
               </Text>
             </View>
@@ -788,7 +788,7 @@ function SavedView({
                 backgroundColor: p.surface,
               }}
             >
-              <Text style={{ flex: 1, color: p.textMuted, fontSize: 15 }} numberOfLines={1}>
+              <Text style={{ flex: 1, color: p.textMuted, fontSize: 15 }} numberOfLines={scaledLines(1)}>
                 Rejse: <Text style={{ color: p.text, fontWeight: "600" }}>{tripName}</Text>
               </Text>
               {trips.length > 1 ? (
@@ -816,7 +816,7 @@ function SavedView({
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
                       style={{
-                        minHeight: 44,
+                        minHeight: MIN_TOUCH,
                         justifyContent: "center",
                         paddingHorizontal: space.md,
                         borderRadius: radius.pill,
@@ -902,20 +902,25 @@ function Chip({
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : "text"}
       accessibilityHint={hint}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        minHeight: 36,
-        paddingHorizontal: space.md,
-        borderRadius: radius.pill,
-        borderWidth: 1,
-        borderColor: p.border,
-        backgroundColor: p.surface,
-      }}
+      // Mærkatet er 36 højt; kan der trykkes på det, er trykfeltet 48.
+      style={{ minHeight: onPress ? MIN_TOUCH : undefined, justifyContent: "center" }}
     >
-      <Ionicons name={icon} size={15} color={p.accent} />
-      <Text style={{ color: p.text, fontSize: 14, textDecorationLine: onPress ? "underline" : "none" }}>{label}</Text>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          minHeight: 36,
+          paddingHorizontal: space.md,
+          borderRadius: radius.pill,
+          borderWidth: 1,
+          borderColor: p.border,
+          backgroundColor: p.surface,
+        }}
+      >
+        <Ionicons name={icon} size={15} color={p.accent} />
+        <Text style={{ color: p.text, fontSize: 14, textDecorationLine: onPress ? "underline" : "none" }}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -1054,12 +1059,11 @@ function Screen({ children, onClose }: { children: ReactNode; onClose?: () => vo
         onPress={onClose ?? (() => router.back())}
         accessibilityRole="button"
         accessibilityLabel="Luk"
-        hitSlop={8}
         style={({ pressed }) => ({
-          width: 44,
-          height: 44,
+          width: MIN_TOUCH,
+          height: MIN_TOUCH,
           margin: space.sm,
-          borderRadius: 22,
+          borderRadius: MIN_TOUCH / 2,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: pressed ? p.surfaceMuted : "transparent",
@@ -1106,14 +1110,13 @@ function DarkWait({ uri, label, onClose }: { uri?: string; label?: string; onClo
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Luk"
-          hitSlop={8}
           style={({ pressed }) => ({
             position: "absolute",
             top: insets.top + space.sm,
             left: space.sm,
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: MIN_TOUCH,
+            height: MIN_TOUCH,
+            borderRadius: MIN_TOUCH / 2,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: pressed ? "rgba(255,255,255,0.16)" : "transparent",

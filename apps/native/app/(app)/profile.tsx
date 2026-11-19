@@ -10,7 +10,7 @@ import { formatRelative } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { usePendingCount, usePostCounts, useTrips } from "@/lib/local-db/queries";
 import { requestSync, useSyncState } from "@/lib/sync/sync-scheduler";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 import { queryClient } from "@/utils/trpc";
 
 /** Profil (åbnes fra avataren i headeren): upload-status, synkronisering og log ud. */
@@ -91,10 +91,10 @@ export default function ProfileScreen() {
           <Text style={[typo.title, { color: p.onInk }]}>{(user.name.trim()[0] ?? "?").toUpperCase()}</Text>
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text selectable style={[typo.title, { color: p.text }]} numberOfLines={1}>
+          <Text selectable style={[typo.title, { color: p.text }]} numberOfLines={scaledLines(1)}>
             {user.name}
           </Text>
-          <Text selectable style={{ color: p.textMuted, fontSize: 15 }} numberOfLines={1}>
+          <Text selectable style={{ color: p.textMuted, fontSize: 15 }} numberOfLines={scaledLines(1)}>
             {user.email}
           </Text>
         </View>

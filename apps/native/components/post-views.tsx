@@ -11,7 +11,7 @@ import { formatDateTimeLong, formatRelative } from "@/lib/dates";
 import { isVideo, postImageSource, postVideoUri, type LocalPost } from "@/lib/local-db/repo";
 import { formatDuration } from "@/lib/media";
 import { useCountryFacts } from "@/lib/local-db/queries";
-import { radius, space, typo, usePalette, type Palette } from "@/lib/theme";
+import { radius, scaledLines, space, type Palette, typo, usePalette } from "@/lib/theme";
 
 // ---------------------------------------------------------------------------
 // Fælles hjælpere
@@ -259,20 +259,20 @@ export function PostCard({
       </View>
       <View style={{ paddingHorizontal: space.xs, gap: 6 }}>
         {tripLabel ? (
-          <Text style={[typo.eyebrow, { color: p.textMuted }]} numberOfLines={1}>
+          <Text style={[typo.eyebrow, { color: p.textMuted }]} numberOfLines={scaledLines(1)}>
             {tripLabel.toUpperCase()}
           </Text>
         ) : null}
-        <Text style={[typo.heading, { color: p.text, fontSize: 21 }]} numberOfLines={1}>
+        <Text style={[typo.heading, { color: p.text, fontSize: 21 }]} numberOfLines={scaledLines(1)}>
           {placeLabel(post)}
         </Text>
         {post.text ? (
-          <Text style={[typo.note, { color: p.text }]} numberOfLines={4}>
+          <Text style={[typo.note, { color: p.text }]} numberOfLines={scaledLines(4)}>
             {post.text}
           </Text>
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: 2 }}>
-          <Text style={{ flex: 1, color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
+          <Text style={{ flex: 1, color: p.textMuted, fontSize: 13 }} numberOfLines={scaledLines(1)}>
             {authorLabel(post, currentUserId)} · {formatRelative(post.takenAt)}
           </Text>
           <PendingNote post={post} />
@@ -336,18 +336,18 @@ export function PostListItem({
         <VideoBadge post={post} compact />
       </View>
       <View style={{ flex: 1, gap: 2, justifyContent: "center" }}>
-        <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
+        <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={scaledLines(1)}>
           {placeLabel(post)}
         </Text>
         {post.text ? (
-          <Text style={{ color: p.text, fontSize: 14 }} numberOfLines={1}>
+          <Text style={{ color: p.text, fontSize: 14 }} numberOfLines={scaledLines(1)}>
             {post.text}
           </Text>
         ) : null}
         {pending ? (
           <PendingNote post={post} size={12} />
         ) : (
-          <Text numberOfLines={1} style={{ color: p.textMuted, fontSize: 12 }}>
+          <Text numberOfLines={scaledLines(1)} style={{ color: p.textMuted, fontSize: 12 }}>
             {`${tripLabel ? `${tripLabel} · ` : ""}${authorLabel(post, currentUserId)} · ${formatRelative(post.takenAt)}`}
           </Text>
         )}

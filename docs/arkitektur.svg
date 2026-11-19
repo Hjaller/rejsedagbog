@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 560" width="980" height="560" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Arkitektur for Rejsepost</title>
+  <desc id="d">Appen og web taler over HTTPS med en reverse proxy, som sender videre til API'et. API'et bruger PostgreSQL, en privat S3-bucket og tre eksterne tjenester.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#1C1B19"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#6B675F"/>
+    </marker>
+  </defs>
+  <rect width="980" height="560" fill="#FFFFFF"/>
+
+  <!-- Tillidsgrænser -->
+  <rect x="16" y="44" width="250" height="500" rx="12" fill="#F6F1E7" stroke="#C9C1B0" stroke-dasharray="6 5"/>
+  <text x="30" y="66" font-size="12" font-weight="700" fill="#6B675F" letter-spacing="1">BRUGERENS ENHED</text>
+  <rect x="356" y="44" width="360" height="500" rx="12" fill="#F6F1E7" stroke="#C9C1B0" stroke-dasharray="6 5"/>
+  <text x="370" y="66" font-size="12" font-weight="700" fill="#6B675F" letter-spacing="1">SERVER (COOLIFY, DOCKER)</text>
+  <rect x="772" y="44" width="192" height="500" rx="12" fill="#F6F1E7" stroke="#C9C1B0" stroke-dasharray="6 5"/>
+  <text x="786" y="66" font-size="12" font-weight="700" fill="#6B675F" letter-spacing="1">TREDJEPARTER</text>
+
+  <!-- Enhed -->
+  <rect x="34" y="84" width="214" height="252" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="48" y="108" font-size="15" font-weight="700" fill="#1C1B19">App (Expo / React Native)</text>
+  <text x="48" y="127" font-size="12" fill="#6B675F">Android og iOS · telefon og tablet</text>
+  <rect x="48" y="142" width="186" height="50" rx="6" fill="#EFE9DC"/>
+  <text x="58" y="162" font-size="12.5" font-weight="600" fill="#1C1B19">SQLite</text>
+  <text x="58" y="180" font-size="11.5" fill="#6B675F">indlæg, rejser, upload-kø</text>
+  <rect x="48" y="200" width="186" height="50" rx="6" fill="#EFE9DC"/>
+  <text x="58" y="220" font-size="12.5" font-weight="600" fill="#1C1B19">Appens filer</text>
+  <text x="58" y="238" font-size="11.5" fill="#6B675F">billeder og video, til de er sendt</text>
+  <rect x="48" y="258" width="186" height="64" rx="6" fill="#FBE9E3" stroke="#B9472A"/>
+  <text x="58" y="278" font-size="12.5" font-weight="600" fill="#8A3A22">Secure store</text>
+  <text x="58" y="296" font-size="11.5" fill="#8A3A22">login-token (Keystore/Keychain)</text>
+  <text x="58" y="312" font-size="11.5" fill="#8A3A22">udløber efter 7 dage</text>
+
+  <rect x="34" y="372" width="214" height="62" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="48" y="396" font-size="15" font-weight="700" fill="#1C1B19">Web (Next.js)</text>
+  <text x="48" y="415" font-size="12" fill="#6B675F">login · session i HttpOnly-cookie</text>
+
+  <rect x="34" y="462" width="214" height="62" rx="10" fill="#FFFFFF" stroke="#6B675F"/>
+  <text x="48" y="486" font-size="13" font-weight="600" fill="#1C1B19">Kamera, album og GPS</text>
+  <text x="48" y="505" font-size="11.5" fill="#6B675F">tilladelse kun "mens appen bruges"</text>
+
+  <!-- Server -->
+  <rect x="374" y="84" width="324" height="50" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="388" y="106" font-size="14" font-weight="700" fill="#1C1B19">Reverse proxy (Traefik)</text>
+  <text x="388" y="124" font-size="11.5" fill="#6B675F">TLS-certifikat · http → https · klientens IP</text>
+
+  <rect x="374" y="166" width="324" height="218" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="388" y="190" font-size="15" font-weight="700" fill="#1C1B19">API (Fastify)</text>
+  <rect x="388" y="202" width="296" height="38" rx="6" fill="#EFE9DC"/>
+  <text x="398" y="219" font-size="12.5" font-weight="600" fill="#1C1B19">/api/auth/* · Better Auth</text>
+  <text x="398" y="234" font-size="11" fill="#6B675F">login, sessioner, rate limit 5/min pr. IP</text>
+  <rect x="388" y="246" width="296" height="52" rx="6" fill="#FBE9E3" stroke="#B9472A"/>
+  <text x="398" y="263" font-size="12.5" font-weight="600" fill="#8A3A22">/trpc/* · tRPC med Zod-validering</text>
+  <text x="398" y="278" font-size="11" fill="#8A3A22">tripMemberProcedure: er brugeren med på rejsen,</text>
+  <text x="398" y="291" font-size="11" fill="#8A3A22">og hvilken rolle (ejer, medrejsende, kun visning)?</text>
+  <rect x="388" y="304" width="296" height="38" rx="6" fill="#EFE9DC"/>
+  <text x="398" y="321" font-size="12.5" font-weight="600" fill="#1C1B19">POST /api/uploads</text>
+  <text x="398" y="336" font-size="11" fill="#6B675F">samme adgangstjek · sharp/ffmpeg fjerner EXIF og GPS</text>
+  <text x="388" y="366" font-size="11.5" fill="#6B675F">Hemmeligheder kun som miljøvariabler på serveren</text>
+
+  <rect x="374" y="424" width="150" height="96" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="388" y="448" font-size="14" font-weight="700" fill="#1C1B19">PostgreSQL</text>
+  <text x="388" y="467" font-size="11.5" fill="#6B675F">Prisma · brugere,</text>
+  <text x="388" y="482" font-size="11.5" fill="#6B675F">sessioner, rejser,</text>
+  <text x="388" y="497" font-size="11.5" fill="#6B675F">medlemmer, indlæg</text>
+  <text x="388" y="512" font-size="11" fill="#8A3A22">ikke åben udefra</text>
+
+  <!-- Tredjeparter -->
+  <rect x="788" y="84" width="160" height="124" rx="10" fill="#FFFFFF" stroke="#1C1B19" stroke-width="1.5"/>
+  <text x="800" y="190" font-size="10.5" fill="#6B675F">appen henter billedet</text>
+  <text x="800" y="203" font-size="10.5" fill="#6B675F">direkte via linket</text>
+  <text x="800" y="107" font-size="13.5" font-weight="700" fill="#1C1B19">Object Storage (S3)</text>
+  <text x="800" y="125" font-size="11.5" fill="#6B675F">Hetzner, EU</text>
+  <text x="800" y="141" font-size="11.5" fill="#6B675F">privat bucket</text>
+  <text x="800" y="157" font-size="11.5" fill="#8A3A22">kun signerede links,</text>
+  <text x="800" y="172" font-size="11.5" fill="#8A3A22">15 minutter</text>
+
+  <rect x="788" y="228" width="160" height="46" rx="10" fill="#FFFFFF" stroke="#6B675F"/>
+  <text x="800" y="247" font-size="13" font-weight="600" fill="#1C1B19">Open-Meteo</text>
+  <text x="800" y="263" font-size="11.5" fill="#6B675F">vejr</text>
+  <rect x="788" y="284" width="160" height="46" rx="10" fill="#FFFFFF" stroke="#6B675F"/>
+  <text x="800" y="303" font-size="13" font-weight="600" fill="#1C1B19">Nominatim (OSM)</text>
+  <text x="800" y="319" font-size="11.5" fill="#6B675F">stednavn og stedsøgning</text>
+  <rect x="788" y="340" width="160" height="46" rx="10" fill="#FFFFFF" stroke="#6B675F"/>
+  <text x="800" y="359" font-size="13"  font-weight="600" fill="#1C1B19">REST Countries</text>
+  <text x="800" y="375" font-size="11.5" fill="#6B675F">landefakta · API-nøgle</text>
+
+  <rect x="788" y="424" width="160" height="96" rx="10" fill="#FFFFFF" stroke="#6B675F"/>
+  <text x="800" y="447" font-size="13" font-weight="600" fill="#1C1B19">Google og Apple</text>
+  <text x="800" y="465" font-size="11.5" fill="#6B675F">login med OAuth 2.0</text>
+  <text x="800" y="481" font-size="11.5" fill="#6B675F">(forberedt, ikke sat op)</text>
+  <text x="800" y="503" font-size="13" font-weight="600" fill="#1C1B19">OSM-kortfliser</text>
+
+  <!-- Pile -->
+  <path d="M248 109H374" stroke="#1C1B19" stroke-width="2" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="311" y="101" font-size="12" font-weight="700" fill="#1C1B19" text-anchor="middle">HTTPS</text>
+  <text x="311" y="126" font-size="10.5" fill="#6B675F" text-anchor="middle">token i hver</text>
+  <text x="311" y="139" font-size="10.5" fill="#6B675F" text-anchor="middle">forespørgsel</text>
+  <path d="M248 400C310 400 310 122 374 122" stroke="#1C1B19" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M536 134V166" stroke="#1C1B19" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M449 384V424" stroke="#1C1B19" stroke-width="2" marker-end="url(#a)" marker-start="url(#a)"/>
+  <path d="M698 323C750 323 740 150 788 150" stroke="#1C1B19" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <text x="738" y="196" font-size="10.5" fill="#6B675F">upload</text>
+  <path d="M698 262C740 262 746 251 788 251" stroke="#6B675F" stroke-width="1.5" fill="none" marker-end="url(#g)"/>
+  <path d="M698 270C740 270 746 307 788 307" stroke="#6B675F" stroke-width="1.5" fill="none" marker-end="url(#g)"/>
+  <path d="M698 278C736 278 742 363 788 363" stroke="#6B675F" stroke-width="1.5" fill="none" marker-end="url(#g)"/>
+
+  <text x="16" y="28" font-size="17" font-weight="700" fill="#1C1B19">Rejsepost – arkitektur</text>
+  <text x="964" y="28" font-size="11.5" fill="#6B675F" text-anchor="end">Rødt = sikkerhedskritisk · stiplede kasser = tillidsgrænser</text>
+</svg>

@@ -1,55 +1,20 @@
 import type { TextStyle } from "react-native";
-import { useColorScheme } from "react-native";
+import { PixelRatio, useColorScheme } from "react-native";
+
+import { dark, light, type Palette } from "./palette";
+
+export type { Palette };
+
+/** Mindste trykfelt: 48 dp (Android) dækker også iOS' 44 pt. */
+export const MIN_TOUCH = 48;
 
 /**
- * Rejsepost-paletten (redesign D, "postkort"): papirflade, blæk-sort til primære
- * handlinger og poststempel-rød til "+", stempler og det, der venter på upload.
+ * Linjeloft, der følger skriftstørrelsen: med stor skrift (tilgængelighed, op til 200 %)
+ * får teksten dobbelt så mange linjer, så navne og steder ikke bliver skåret af.
  */
-const light = {
-  background: "#F6F1E7",
-  /** Kort og ark. */
-  surface: "#FFFFFF",
-  /** Bundbar og sidebar: en anelse varmere end kortene. */
-  paper: "#FFFDF8",
-  surfaceMuted: "#EFE9DC",
-  border: "#E4DDCE",
-  borderStrong: "#C9C1B0",
-  text: "#1C1B19",
-  textMuted: "#6B675F",
-  ink: "#1C1B19",
-  onInk: "#FFFFFF",
-  /** Poststempel-rød som flade (fx "+"-knappen). */
-  accent: "#B9472A",
-  onAccent: "#FFFFFF",
-  /** Rød til tekst og tynde streger på papiret (kontrast ≥ 4,5:1). */
-  accentText: "#8A3A22",
-  success: "#2F7D4F",
-  warning: "#A86B12",
-  danger: "#B3261E",
-  placeholder: "#E9E2D3",
-};
-
-const dark: typeof light = {
-  background: "#161412",
-  surface: "#201E1B",
-  paper: "#1B1917",
-  surfaceMuted: "#2C2925",
-  border: "#38342E",
-  borderStrong: "#4E4941",
-  text: "#F3EEE4",
-  textMuted: "#A8A196",
-  ink: "#F3EEE4",
-  onInk: "#161412",
-  accent: "#E07A5F",
-  onAccent: "#161412",
-  accentText: "#EE9A82",
-  success: "#6FBF8E",
-  warning: "#E0A84F",
-  danger: "#F2827A",
-  placeholder: "#2C2925",
-};
-
-export type Palette = typeof light;
+export function scaledLines(lines: number): number {
+  return PixelRatio.getFontScale() > 1.3 ? lines * 2 : lines;
+}
 
 export function usePalette(): Palette {
   return useColorScheme() === "dark" ? dark : light;

@@ -10,7 +10,7 @@ import { Button } from "@/components/button";
 import { TextField } from "@/components/text-field";
 import { formatDateInput, parseDateInput, toIsoDate } from "@/lib/dates";
 import { useCreateTrip } from "@/lib/local-db/queries";
-import { radius, space, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, space, usePalette } from "@/lib/theme";
 
 const normalize = (s: string) =>
   s
@@ -120,7 +120,7 @@ export default function NewTripScreen() {
                       flexDirection: "row",
                       alignItems: "center",
                       gap: space.sm,
-                      minHeight: 44,
+                      minHeight: MIN_TOUCH,
                       paddingLeft: space.md,
                       paddingRight: space.sm,
                       borderWidth: 1,
@@ -162,6 +162,8 @@ export default function NewTripScreen() {
                   }}
                   accessibilityRole="button"
                   style={({ pressed }) => ({
+                    minHeight: MIN_TOUCH,
+                    justifyContent: "center",
                     padding: space.md,
                     backgroundColor: pressed ? p.surfaceMuted : p.surface,
                     borderTopWidth: i === 0 ? 0 : 1,

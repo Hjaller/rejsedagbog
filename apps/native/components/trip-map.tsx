@@ -13,7 +13,7 @@ import { Linking, Pressable, Text, useColorScheme, View } from "react-native";
 
 import { type MapView, type PositionedPost } from "@/lib/map-view";
 import { postImageSource } from "@/lib/local-db/repo";
-import { radius, space, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, space, usePalette } from "@/lib/theme";
 
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
@@ -122,13 +122,12 @@ export function TripMap({
         onPress={() => fitAll()}
         accessibilityRole="button"
         accessibilityLabel="Vis alle indlæg på kortet"
-        hitSlop={8}
         style={({ pressed }) => ({
           position: "absolute",
           top: space.lg,
           right: space.lg,
-          width: 44,
-          height: 44,
+          width: MIN_TOUCH,
+          height: MIN_TOUCH,
           borderRadius: radius.pill,
           alignItems: "center",
           justifyContent: "center",
@@ -152,17 +151,19 @@ export function OsmAttribution() {
     <Pressable
       onPress={() => Linking.openURL(OSM_COPYRIGHT)}
       accessibilityRole="link"
-      style={{
-        position: "absolute",
-        right: 0,
-        bottom: 0,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        backgroundColor: "rgba(255,255,255,0.75)",
-        borderTopLeftRadius: 4,
-      }}
+      // Krediteringen skal fylde lidt på kortet, men trykfeltet er 48 højt.
+      style={{ position: "absolute", right: 0, bottom: 0, minHeight: MIN_TOUCH, justifyContent: "flex-end" }}
     >
-      <Text style={{ fontSize: 11, color: "#333" }}>© OpenStreetMap-bidragydere</Text>
+      <View
+        style={{
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          backgroundColor: "rgba(255,255,255,0.75)",
+          borderTopLeftRadius: 4,
+        }}
+      >
+        <Text style={{ fontSize: 11, color: "#333" }}>© OpenStreetMap-bidragydere</Text>
+      </View>
     </Pressable>
   );
 }

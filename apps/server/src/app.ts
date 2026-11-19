@@ -57,6 +57,14 @@ export async function buildApp(deps: AppDeps) {
   });
   const limits = deps.rateLimits ?? { trpcPerMinute: 300, uploadsPerMinute: 60 };
 
+  // HSTS: kom forespørgslen over HTTPS (set gennem proxyen, se trust-proxy.ts), skal
+  // klienten blive ved med at bruge HTTPS. Proxyen sender i forvejen HTTP videre til HTTPS.
+  app.addHook("onSend", async (req, reply) => {
+    if (req.protocol === "https") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+  });
+
   // tRPC-ruterne oprettes af et plugin, så de får rate limit-config her. Hooken skal
   // registreres før @fastify/rate-limit, som også læser config i onRoute.
   app.addHook("onRoute", (route) => {

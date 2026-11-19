@@ -10,7 +10,7 @@ import { ProfileButton } from "@/components/profile-button";
 import { formatDateRange } from "@/lib/dates";
 import { ALL_TRIPS, useActiveTrip, usePostCounts } from "@/lib/local-db/queries";
 import type { LocalTrip } from "@/lib/local-db/repo";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 
 /** Frimærkernes farver. Hvert land får altid den samme; alle har hvid tekst med kontrast ≥ 4,5:1. */
 const STAMP_COLORS = ["#B9472A", "#2F5D8A", "#3F6B4A", "#6A4C7D", "#8A5A1E", "#2E6B6B", "#7A3B52"];
@@ -202,7 +202,8 @@ function Stamp({
       >
         <View
           style={{
-            height: 104,
+            // minHeight, så frimærket vokser med stor skrift.
+            minHeight: 104,
             padding: space.sm + 2,
             justifyContent: "space-between",
             backgroundColor: localOnly ? "transparent" : color,
@@ -211,7 +212,7 @@ function Stamp({
             borderColor: p.borderStrong,
           }}
         >
-          <Text style={[typo.eyebrow, { color: localOnly ? p.textMuted : "#FFFFFF", fontSize: 10, letterSpacing: 1 }]} numberOfLines={1}>
+          <Text style={[typo.eyebrow, { color: localOnly ? p.textMuted : "#FFFFFF", fontSize: 10, letterSpacing: 1 }]} numberOfLines={scaledLines(1)}>
             {top || " "}
           </Text>
           <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
@@ -225,10 +226,10 @@ function Stamp({
           </View>
         </View>
         <View style={{ paddingHorizontal: 2, gap: 2 }}>
-          <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={1}>
+          <Text style={[typo.heading, { color: p.text, fontSize: 17, lineHeight: 22 }]} numberOfLines={scaledLines(1)}>
             {trip.name}
           </Text>
-          <Text style={{ color: p.textMuted, fontSize: 12 }} numberOfLines={1}>
+          <Text style={{ color: p.textMuted, fontSize: 12 }} numberOfLines={scaledLines(1)}>
             {formatDateRange(trip.startDate, trip.endDate)} · {postCount} indlæg
           </Text>
         </View>
@@ -236,12 +237,11 @@ function Stamp({
           onPress={onGroup}
           accessibilityRole="button"
           accessibilityLabel={trip.memberCount > 1 ? `Gruppen på ${trip.name}` : `Invitér til eller del ${trip.name}`}
-          hitSlop={6}
           style={({ pressed }) => ({
             flexDirection: "row",
             alignItems: "center",
             gap: 6,
-            minHeight: 36,
+            minHeight: MIN_TOUCH,
             paddingHorizontal: 2,
             opacity: pressed ? 0.6 : 1,
           })}

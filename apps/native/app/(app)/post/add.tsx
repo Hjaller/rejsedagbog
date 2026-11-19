@@ -9,7 +9,7 @@ import { VIDEO_MAX_SECONDS } from "@rejsedagbog/shared";
 
 import { useActiveTrip } from "@/lib/local-db/queries";
 import { ALBUM_LIMIT } from "@/lib/media";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 
 /**
  * "+" åbner dette ark: tag et billede eller optag en video med telefonens kamera, eller
@@ -38,7 +38,7 @@ export default function NewPostSheet() {
           Nyt indlæg
         </Text>
         {defaultTrip ? (
-          <Text style={{ color: p.textMuted, fontSize: 14 }} numberOfLines={1}>
+          <Text style={{ color: p.textMuted, fontSize: 14 }} numberOfLines={scaledLines(1)}>
             Gemmes i <Text style={{ color: p.text, fontWeight: "600" }}>{defaultTrip.name}</Text> · kan skiftes
             bagefter
           </Text>

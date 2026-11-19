@@ -11,7 +11,8 @@
     "env:generate": "varlock codegen",
     "auth:generate": "varlock run -- npx --yes auth@latest generate --config src/services.ts --output ../../packages/db/prisma/schema/auth.prisma --yes",
     "test": "vitest run",
-    "s3:smoke": "tsx scripts/s3-smoke.ts"
+    "s3:smoke": "tsx scripts/s3-smoke.ts",
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

@@ -14,7 +14,7 @@ import { formatDateTimeLong } from "@/lib/dates";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { ALL_TRIPS, useActiveTrip, usePost, usePosts } from "@/lib/local-db/queries";
 import { isVideo, postImageSource, postVideoUri, type LocalPost } from "@/lib/local-db/repo";
-import { space, typo } from "@/lib/theme";
+import { MIN_TOUCH, scaledLines, space, typo } from "@/lib/theme";
 
 /** Så længe vises et billede i diasshowet. En video vises, til den er spillet færdig. */
 const SLIDE_MS = 4_000;
@@ -206,7 +206,7 @@ export default function ViewerScreen() {
                 {authorLabel(current, user.id)} · {formatDateTimeLong(current.takenAt)}
               </Text>
               {current.text ? (
-                <Text style={[typo.note, { color: "#fff", fontSize: 15, marginTop: space.xs }]} numberOfLines={3}>
+                <Text style={[typo.note, { color: "#fff", fontSize: 15, marginTop: space.xs }]} numberOfLines={scaledLines(3)}>
                   {current.text}
                 </Text>
               ) : null}
@@ -245,18 +245,22 @@ function TopButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      hitSlop={12}
-      style={{
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: dim ? "rgba(0,0,0,0.35)" : "transparent",
-        opacity: dim ? 0.8 : 1,
-      }}
+      // Den synlige cirkel er 36; trykfeltet er 48.
+      style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: "center", justifyContent: "center" }}
     >
-      <Ionicons name={icon} size={dim ? 20 : 26} color="#fff" />
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: dim ? "rgba(0,0,0,0.35)" : "transparent",
+          opacity: dim ? 0.8 : 1,
+        }}
+      >
+        <Ionicons name={icon} size={dim ? 20 : 26} color="#fff" />
+      </View>
     </Pressable>
   );
 }

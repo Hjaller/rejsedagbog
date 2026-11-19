@@ -37,6 +37,14 @@ async function appleClientSecret(clientId: string, teamId: string, keyId: string
     .sign(key);
 }
 
+/**
+ * Sessionens levetid. Tokenet i appen (expo-secure-store) og cookien på web udløber
+ * efter 7 dage uden brug. Bruges appen, forlænges sessionen højst én gang i døgnet,
+ * så en stjålet, ubrugt session dør af sig selv, og en aktiv bruger ikke logges ud på rejsen.
+ */
+export const SESSION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
+export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+
 /** Kun de udbydere, der er sat miljøvariabler for. Uden dem svarer /sign-in/social 404. */
 function socialProviders(env: AuthConfig) {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY } =
@@ -88,6 +96,10 @@ export function createAuth(
     // (Better Auths standard, requireLocalEmailVerified), fordi appen ikke bekræfter e-mails:
     // ellers kunne man oprette en konto i en andens e-mail og vente på, at de logger ind.
     socialProviders: providers,
+    session: {
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+      updateAge: SESSION_UPDATE_AGE_SECONDS,
+    },
     // Rate limiting på login (kravspec afsnit 4). Slået til i alle miljøer, så det kan testes lokalt.
     rateLimit: {
       enabled: true,

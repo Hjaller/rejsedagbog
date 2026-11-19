@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps } from "react";
 import { ActivityIndicator, Pressable, Text, type StyleProp, type ViewStyle } from "react-native";
 
-import { radius, space, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, space, usePalette } from "@/lib/theme";
 
 type Variant = "primary" | "accent" | "secondary" | "ghost" | "danger";
 
@@ -49,7 +49,7 @@ export function Button({
       disabled={inactive}
       style={({ pressed }) => [
         {
-          minHeight: size === "lg" ? 52 : 44,
+          minHeight: size === "lg" ? 52 : MIN_TOUCH,
           paddingHorizontal: space.lg,
           borderRadius: radius.md,
           borderCurve: "continuous",

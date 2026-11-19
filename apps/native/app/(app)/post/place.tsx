@@ -16,7 +16,7 @@ import { usePosts, useSetPostPosition, useTrips } from "@/lib/local-db/queries";
 import { getPost } from "@/lib/local-db/repo";
 import { hasPosition, viewForPosts, type MapView } from "@/lib/map-view";
 import { getCurrentCoords, SCREEN_OPEN_MAX_AGE_MS } from "@/lib/media";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 import { trpcClient } from "@/utils/trpc";
 
 /** Hele verden, når hverken indlægget eller rejsen har en position at starte fra. */
@@ -142,11 +142,10 @@ export default function SetPlaceScreen() {
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Luk uden at gemme"
-            hitSlop={8}
             style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              borderRadius: 22,
+              width: MIN_TOUCH,
+              height: MIN_TOUCH,
+              borderRadius: MIN_TOUCH / 2,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: pressed ? p.surfaceMuted : "transparent",
@@ -158,7 +157,7 @@ export default function SetPlaceScreen() {
             <Text style={[typo.eyebrow, { color: p.textMuted }]}>
               {own.length > 1 ? `${own.length} BILLEDER` : first?.lat != null ? "RET STED" : "SÆT STED"}
             </Text>
-            <Text accessibilityRole="header" style={[typo.heading, { color: p.text }]} numberOfLines={1}>
+            <Text accessibilityRole="header" style={[typo.heading, { color: p.text }]} numberOfLines={scaledLines(1)}>
               Hvor er billedet taget?
             </Text>
           </View>
@@ -258,11 +257,11 @@ export default function SetPlaceScreen() {
                   >
                     <Ionicons name="location-outline" size={20} color={p.accent} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={1}>
+                      <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={scaledLines(1)}>
                         {r.name}
                       </Text>
                       {r.detail ? (
-                        <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
+                        <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={scaledLines(1)}>
                           {r.detail}
                         </Text>
                       ) : null}
@@ -320,7 +319,7 @@ export default function SetPlaceScreen() {
           borderTopColor: p.border,
         }}
       >
-        <Text style={{ color: notice ? p.danger : p.textMuted, fontSize: 14 }} numberOfLines={2}>
+        <Text style={{ color: notice ? p.danger : p.textMuted, fontSize: 14 }} numberOfLines={scaledLines(2)}>
           {notice ??
             (!chosen
               ? process.env.EXPO_OS === "web"

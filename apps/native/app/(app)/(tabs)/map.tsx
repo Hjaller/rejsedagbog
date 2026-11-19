@@ -12,7 +12,7 @@ import { useBreakpoint } from "@/lib/breakpoints";
 import { useLocalDb } from "@/lib/local-db/provider";
 import { useSelectedPosts } from "@/lib/local-db/queries";
 import { hasPosition, viewForPosts } from "@/lib/map-view";
-import { radius, space, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, space, usePalette } from "@/lib/theme";
 
 /** Kortvisning (Should 5): rejsens indlæg med GPS-position som miniaturer på et OpenStreetMap-kort. */
 export default function MapScreen() {
@@ -119,8 +119,15 @@ export default function MapScreen() {
               onPress={() => setSelectedId(null)}
               accessibilityRole="button"
               accessibilityLabel="Luk"
-              hitSlop={8}
-              style={{ position: "absolute", top: space.xs, right: space.xs, padding: space.xs }}
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                width: MIN_TOUCH,
+                height: MIN_TOUCH,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <Ionicons name="close" size={20} color={p.textMuted} />
             </Pressable>

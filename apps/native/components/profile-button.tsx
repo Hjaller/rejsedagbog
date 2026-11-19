@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { useLocalDb } from "@/lib/local-db/provider";
 import { usePendingCount } from "@/lib/local-db/queries";
-import { usePalette } from "@/lib/theme";
+import { MIN_TOUCH, usePalette } from "@/lib/theme";
 
 /**
  * Avatar med brugerens forbogstav, der åbner Profil (redesign D: profilen ligger i
@@ -21,11 +21,10 @@ export function ProfileButton() {
       onPress={() => router.push("/profile")}
       accessibilityRole="button"
       accessibilityLabel={waiting ? `Profil. ${pending.data} venter på upload` : "Profil"}
-      hitSlop={4}
       style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: MIN_TOUCH,
+        height: MIN_TOUCH,
+        borderRadius: MIN_TOUCH / 2,
         borderWidth: 1.5,
         borderColor: p.ink,
         backgroundColor: pressed ? p.surfaceMuted : p.surface,

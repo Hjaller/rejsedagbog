@@ -10,7 +10,7 @@ import { allTripsSummary } from "@/components/trip-header";
 import { formatDateRange, tripDay } from "@/lib/dates";
 import { ALL_TRIPS, useActiveTrip, usePostCounts } from "@/lib/local-db/queries";
 import type { LocalTrip } from "@/lib/local-db/repo";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { radius, scaledLines, space, typo, usePalette } from "@/lib/theme";
 
 /** Flere rejser end det her vises i Rejser-fanen, så arket ikke skal kunne rulle. */
 const MAX_TRIPS = 5;
@@ -138,10 +138,10 @@ function Option({
     >
       <View style={{ width: 36, alignItems: "center" }}>{icon}</View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={1}>
+        <Text style={{ color: p.text, fontSize: 16, fontWeight: "600" }} numberOfLines={scaledLines(1)}>
           {title}
         </Text>
-        <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={1}>
+        <Text style={{ color: p.textMuted, fontSize: 13 }} numberOfLines={scaledLines(1)}>
           {subtitle}
         </Text>
       </View>

@@ -15,7 +15,7 @@ import { useLocalDb } from "@/lib/local-db/provider";
 import { useSelectedPosts } from "@/lib/local-db/queries";
 import { useRefreshSync } from "@/lib/sync/sync-scheduler";
 import { isVideo, postImageSource, postImageUri, type LocalPost, type LocalTrip } from "@/lib/local-db/repo";
-import { radius, space, typo, usePalette } from "@/lib/theme";
+import { MIN_TOUCH, radius, space, typo, usePalette } from "@/lib/theme";
 
 type Row = { type: "day"; key: string; title: string; subtitle?: string } | { type: "row"; key: string; posts: LocalPost[] };
 
@@ -265,7 +265,7 @@ function FilterRow({
       contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm, alignItems: "center" }}
       accessibilityLabel={`Filtrér på ${label.toLowerCase()}`}
     >
-      <Text style={[typo.eyebrow, { color: p.textMuted, width: 56 }]}>{label.toUpperCase()}</Text>
+      <Text style={[typo.eyebrow, { color: p.textMuted, minWidth: 56 }]}>{label.toUpperCase()}</Text>
       {chips.map((chip) => {
         const selected = chip.key === value;
         return (
@@ -274,20 +274,27 @@ function FilterRow({
             onPress={() => onChange(chip.key)}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            hitSlop={{ top: 4, bottom: 4 }}
-            style={({ pressed }) => ({
-              minHeight: 36,
-              paddingHorizontal: space.md,
-              justifyContent: "center",
-              borderRadius: radius.pill,
-              borderWidth: 1,
-              borderColor: selected ? p.ink : p.borderStrong,
-              backgroundColor: selected ? p.ink : pressed ? p.surfaceMuted : p.surface,
-            })}
+            // Chippen er 36 høj; trykfeltet er 48.
+            style={{ minHeight: MIN_TOUCH, minWidth: MIN_TOUCH, justifyContent: "center" }}
           >
-            <Text style={{ color: selected ? p.onInk : p.text, fontSize: 14, fontWeight: selected ? "600" : "400" }}>
-              {chip.label}
-            </Text>
+            {({ pressed }) => (
+              <View
+                style={{
+                  minHeight: 36,
+                  paddingHorizontal: space.md,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: radius.pill,
+                  borderWidth: 1,
+                  borderColor: selected ? p.ink : p.borderStrong,
+                  backgroundColor: selected ? p.ink : pressed ? p.surfaceMuted : p.surface,
+                }}
+              >
+                <Text style={{ color: selected ? p.onInk : p.text, fontSize: 14, fontWeight: selected ? "600" : "400" }}>
+                  {chip.label}
+                </Text>
+              </View>
+            )}
           </Pressable>
         );
       })}

@@ -1,26 +1,51 @@
-# rejsedagbog
+# Rejsepost (rejsedagbog)
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Fastify, TRPC, and more.
+Rejsepost er en rejsedagbog til telefon og tablet. Man tager et billede på rejsen, og appen tilføjer selv sted, vejr og land. Indlæg kan laves uden internet og bliver sendt, når der er forbindelse igen. En rejse kan deles med dem, man rejser med, så alles billeder samles ét sted, og med familien derhjemme, som kun kan se med.
 
-## Features
+Appen er lavet til unge og voksne, der rejser sammen: studieture, venneture og familieferier. Den løser, at billederne ender spredt på flere telefoner, og at man bagefter ikke kan huske, hvor og hvornår de blev taget.
 
-- **TypeScript** - For type safety and improved developer experience
-- **Next.js** - Full-stack React framework
-- **React Native** - Build mobile apps using React
-- **Expo** - Tools for React Native development
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Fastify** - Fast, low-overhead web framework
-- **tRPC** - End-to-end type-safe APIs
-- **Node.js** - Runtime environment
-- **Prisma** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Authentication** - Better-Auth
-- **Turborepo** - Optimized monorepo build system
+**Det kan appen**
+
+- Oprette konto og logge ind med e-mail og adgangskode (Google og Apple er forberedt, men ikke sat op hos udbyderne).
+- Oprette rejser med et eller flere lande, og oprette, se, rette og slette egne indlæg med billede eller video.
+- Hente sted, vejr og landefakta automatisk ud fra billedets position og tidspunkt.
+- Virke offline: indlæg gemmes på telefonen og synkroniseres senere.
+- Vise rejsen som tidslinje, galleri og kort, og dele et indlæg som postkort.
+- Tilpasse sig skærmen: bundbar på telefon, sidebar på tablet og liste med detalje ved siden af på store skærme. Lyst og mørkt tema følger telefonen.
+
+Dokumentation: [docs/projektdokumentation.pdf](docs/projektdokumentation.pdf) (design, arkitektur, trusselsmodel, test og refleksion), [kravspecifikationen](Kravspecifikation%20-%20Rejsedagbog.pdf) og [docs/udviklingsplan.md](docs/udviklingsplan.md) (plan og status dag for dag).
+
+## Teknologier
+
+| Del | Teknologi |
+|---|---|
+| App (Android, iOS) | React Native 0.88 med Expo SDK 58 og Expo Router, TypeScript |
+| Lokal lagring i appen | SQLite (`expo-sqlite`) til indlæg og upload-kø, `expo-secure-store` til login-tokenet |
+| API | Fastify 5 med tRPC 11 og Zod-validering, samt en REST-route til upload af billeder og video |
+| Login | Better Auth (e-mail og adgangskode, sessioner med udløb) |
+| Database | PostgreSQL 17 med Prisma |
+| Billeder | S3-kompatibel, privat bucket (Hetzner Object Storage) med signerede links på 15 minutter |
+| Eksterne tjenester | Open-Meteo (vejr), Nominatim/OpenStreetMap (stednavne og kort), REST Countries (landefakta) |
+| Web | Next.js 16 (kun login indtil videre) |
+| Drift | Docker-images på Coolify bag Traefik med TLS |
+| Monorepo og test | Turborepo, Vitest |
+
+Arkitekturen er tegnet i [docs/arkitektur.svg](docs/arkitektur.svg).
+
+## Roller
+
+Roller gælder pr. rejse og håndhæves på serveren (`packages/api/src/trip-access.ts`). Appen skjuler knapper, man ikke må bruge, men det er kun for brugervenlighedens skyld.
+
+| Rolle | Får man ved at | Må |
+|---|---|---|
+| **Ejer** (`owner`) | oprette rejsen | alt: rette og slette rejsen, lave og stoppe invitations- og delingskoder, se gruppen, lægge indlæg op |
+| **Medrejsende** (`member`) | tilslutte sig med invitationskoden | se alt på rejsen, lægge egne indlæg op og rette og slette dem |
+| **Kun visning** (`viewer`) | tilslutte sig med koden til deling | se rejsens indlæg og billeder, intet andet |
+| Ikke med på rejsen | – | ingenting: serveren svarer, at rejsen ikke findes |
+
+Ejeren er rejsens administrator. Der er ingen global administrator, fordi ingen skal kunne se andres private rejsebilleder.
 
 ## Kom i gang på en ny computer
-
-Kravspecifikationen ligger i roden, og planen og den aktuelle status står i [docs/udviklingsplan.md](docs/udviklingsplan.md) (afsnit 10 viser, hvor langt projektet er).
 
 Kræver Node.js, npm og Docker Desktop.
 
@@ -79,12 +104,20 @@ npx expo run:android      # development build: kræver Android Studio/SDK og en 
 
 Telefonen skal være på samme netværk som computeren, og firewallen skal tillade Node.js på port 3000 og 8081.
 
-**5. Kør tests** (kræver, at databasen kører):
+**5. Opret testbrugerne** (serveren skal køre):
+
+```bash
+npm run seed -w server
+```
+
+**6. Kør tests** (kræver, at databasen kører):
 
 ```bash
 npm run test
 npm run check-types
 ```
+
+Video-testene bruger ffmpeg. Hvis de fejler med, at `ffmpeg.exe` mangler, har npm blokeret pakkens install-script; hent den med `node node_modules/ffmpeg-static/install.js`.
 
 Data følger ikke med git: den lokale database og uploadede billeder findes kun på den computer, de blev lavet på.
 
@@ -128,90 +161,55 @@ EAS opretter og gemmer selv signeringsnøglerne (Android keystore, iOS-certifika
 - **Ikoner:** tegnes af `npm run icons -w native` (`apps/native/scripts/generate-icons.mjs`).
 - **Tjek før et build:** `npx expo-doctor` og `npm run check-types`.
 
-## UI Customization
+## Deploy
 
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
+Serveren og web kører som Docker-images (`apps/server/Dockerfile`, `apps/web/Dockerfile`) på Coolify bag Traefik, som står for TLS og sender `http://` videre til `https://`.
 
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
+- API: `https://api.example.com`, web: `https://app.example.com`. Databasen er en Coolify-database, som ikke kan nås udefra.
+- Migrationer køres ved hver opstart af API-containeren (`prisma migrate deploy`).
+- Miljøvariabler sættes i Coolify, aldrig i Git: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `CORS_ORIGIN`, `DATABASE_URL`, `S3_*` og `TRUST_PROXY`. Alle er beskrevet i `apps/server/.env.schema`.
+- `TRUST_PROXY` skal være proxyens IP eller CIDR (i Coolify `10.0.0.0/24`). Uden den ser serveren kun proxyens IP, og alle brugere deler samme rate limit.
+- Serveren skal deployes før en ny app-version, når API'et er ændret.
 
-### Add more shared components
+Lokalt kan hele stakken startes med Docker Compose: `npm run docker:up` (stop med `npm run docker:down`).
 
-Run this from the project root to add more primitives to the shared UI package:
+## Sikkerhed og tjek for hemmeligheder
+
+- Adgangskoder hashes af Better Auth med scrypt. Login-tokenet gemmes i telefonens Keystore/Keychain og udløber efter 7 dage uden brug.
+- Hver tRPC-procedure, der rører en rejse, bygger på `tripMemberProcedure`, som slår medlemskabet op på serveren. Et ændret id i en forespørgsel giver "Rejsen findes ikke".
+- Der er rate limiting på login (5 forsøg pr. minut pr. IP), på invitationskoder, på API'et og på upload, og alt input valideres med Zod-skemaer fra `packages/shared`.
+- Al trafik uden for udvikling går over HTTPS; appen nægter at starte mod en `http://`-server i et build.
+
+Git-historikken er scannet med [gitleaks](https://github.com/gitleaks/gitleaks) 8.30.1 den 19. nov. 2026: 43 commits, ingen hemmeligheder. Det eneste fund var test-hemmeligheden i `apps/server/test/helpers.ts`, som står i `.gitleaksignore`. Kør det selv fra roden:
 
 ```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
+gitleaks git --redact .
 ```
 
-Import shared components like this:
+`.env`-filerne er gitignored. `.env.schema` beskriver, hvilke variabler der findes, og indeholder ingen værdier.
 
-```tsx
-import { Button } from "@rejsedagbog/ui/components/button";
-```
-
-### Add app-specific blocks
-
-If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
-
-## Environment Configuration
-
-Each app owns its environment schema in `.env.schema`. Varlock generates `src/env.ts` during installation; run `npm run env:generate` after changing a schema. Commit schemas, and keep secrets in ignored env files or your deployment platform.
-
-Import the generated `ENV` accessor in application code. Shared database and auth packages receive configuration or initialized clients from the application. See [Varlock's monorepo guide](https://varlock.dev/guides/monorepos/).
-
-Bun's automatic env loading is disabled in `bunfig.toml`; the framework integration or server bootstrap loads Varlock. Node deployments must include Varlock and its dependencies alongside the app schema.
-
-Run standalone Node/Bun tools that use Varlock from the owning app directory so they load that app's schema and env files. `env:generate` only generates TypeScript files; it does not initialize environment values in a subsequent command.
-
-## Deployment
-
-### Docker Compose
-
-- Target: web + server
-- Config: `docker-compose.yml` (app Dockerfiles live in `apps/*/Dockerfile`)
-- Build images: npm run docker:build
-- Start: npm run docker:up
-- Logs: npm run docker:logs
-- Stop: npm run docker:down
-
-Environment variables are read from each app's `.env` file (baked into web builds for public variables) and overridden in `docker-compose.yml` for container networking.
-
-For more details, see the guide on [Deploying with Docker Compose](https://www.better-t-stack.dev/docs/guides/docker).
-
-## Project Structure
+## Projektstruktur
 
 ```
 rejsedagbog/
 ├── apps/
-│   ├── web/         # Frontend application (Next.js)
-│   ├── native/      # Mobile application (React Native, Expo)
-│   └── server/      # Backend API (Fastify, TRPC)
+│   ├── native/      # Appen (React Native, Expo)
+│   ├── server/      # API (Fastify, tRPC), upload-route, tests
+│   └── web/         # Next.js (login)
 ├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   ├── shared/      # Zod-skemaer, konstanter, vejrkoder og landedata (bruges af app og server)
-│   ├── api/         # API layer / business logic
-│   ├── auth/        # Authentication configuration & logic
-│   └── db/          # Database schema & queries
+│   ├── api/         # tRPC-routere og adgangstjek
+│   ├── auth/        # Better Auth-konfiguration
+│   ├── db/          # Prisma-skema og migrationer
+│   ├── shared/      # Zod-skemaer, konstanter, vejrkoder og landedata (app og server)
+│   └── ui/          # shadcn-komponenter til web
+└── docs/            # Projektdokumentation, udviklingsplan, arkitektur og skærmbilleder
 ```
 
-## Available Scripts
+## Scripts
 
-- `npm run dev`: Start all applications in development mode
-- `npm run build`: Build all applications
-- `npm run dev:web`: Start only the web application
-- `npm run dev:server`: Start only the server
-- `npm run check-types`: Check TypeScript types across all apps
-- `npm run dev:native`: Start the React Native/Expo development server
-- `npm run db:push`: Push schema changes to database
-- `npm run db:generate`: Generate database client/types
-- `npm run db:migrate`: Run database migrations
-- `npm run db:studio`: Open database studio UI
-- `npm run docker:build`: Build the Docker Compose images
-- `npm run docker:up`: Build and start the Docker Compose stack
-- `npm run docker:logs`: Tail logs from the Docker Compose stack
-- `npm run docker:down`: Stop the Docker Compose stack
-
-## Better Auth Schema Generation
-
-After changing auth plugins or schema options, run `npm run auth:generate` from the project root. The script runs the Better Auth CLI through `varlock run` from the owning app directory, loading the auth instance from `src/services.ts`. Review the schema changes, then use your ORM's migration workflow to apply them.
+- `npm run dev`: start alle apps. `npm run dev:server`, `npm run dev:native` og `npm run dev:web` starter én ad gangen.
+- `npm run test`: servertests (kræver databasen). `npm run check-types`: typecheck af alle pakker.
+- `npm run seed -w server`: opret testbrugerne og testrejsen på den lokale server.
+- `npm run db:migrate`, `npm run db:generate`, `npm run db:studio`: Prisma.
+- `npm run env:generate`: generér `src/env.ts` efter ændringer i en `.env.schema`.
+- `npm run auth:generate`: generér Better Auths Prisma-skema efter ændringer i auth-konfigurationen.

@@ -669,3 +669,40 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - "N i gruppen" tæller også dem, der kun kan se.
 - Landene på en eksisterende rejse kan ikke rettes i appen (`trips.update` findes, men der er ingen skærm til det).
 - En ældre app-version viser en delt rejse som en almindelig grupperejse; forsøg på at lægge op afvises af serveren.
+
+### 19. nov. 2026: trykfelter, kontrast, 200 % skrift, sessionens udløb og HTTPS
+
+**Lavet**
+- **Trykfelter:** alle trykfelter er mindst 48 dp (`MIN_TOUCH` i `apps/native/lib/theme.ts`), også dem, der før kun nåede målet via `hitSlop`. Små chips og runde knapper ser ud som før, men ligger i et trykfelt på 48.
+- **Kontrast:** `success` og `warning` i det lyse tema er gjort mørkere (`#256B42` og `#8A560B`; før 4,48:1 og 3,91:1 på baggrunden, nu 5,7:1 og 5,5:1). Paletten ligger i `apps/native/lib/palette.ts` uden React Native-import, så den kan testes i Node.
+- **200 % skrift:** linjeloft fordobles ved stor skrift (`scaledLines`), fanernes etiketter bliver på én linje og skaleres ned, til de passer, og frimærket under Rejser vokser med teksten.
+- **Sessionens udløb** står nu i koden (`packages/auth`): 7 dage, forlænges højst én gang i døgnet ved brug. Tokenet ligger i `expo-secure-store` (Keystore/Keychain).
+- **HTTPS:** appen nægter at starte med en `http://`-server uden for udvikling (`apps/native/lib/server-url.ts`), og serveren sender `Strict-Transport-Security`, når forespørgslen kom over HTTPS gennem proxyen.
+
+**Tests** (199 består, før 134)
+- `contrast`: alle tekst- og ikonfarver mod alle flader i lyst og mørkt tema, mindst 4,5:1 (53 tests).
+- `session`: udløb efter 7 dage, cookiens `Max-Age`, `HttpOnly`, `Secure` og `SameSite`, forlængelse efter et døgn, og en udløbet session giver UNAUTHORIZED.
+- `https`: HTTPS-vagten i appen og HSTS-headeren (kan ikke udløses uden om proxyen).
+- De 10 video-tests består igen. `ffmpeg.exe` hentes med `node node_modules/ffmpeg-static/install.js`, fordi npm blokerer pakkens install-script.
+
+**Afprøvet på Android-emulatoren** (nyt dev-build, 411 dp bred, testbruger med en grupperejse og tre indlæg)
+- Trykfelter målt med `uiautomator dump` på login, tidslinje, galleri, kort, rejser, profil, "+"-arket, rejsevælger, ny rejse, tilslut, gruppen, invitér, indlæg, fuld skærm, ret sted, redigér og postkort: ingen under 48 dp. Målingen fandt to, som koden ikke afslørede (en chip på 47 dp og kortets kreditering); begge er rettet.
+- 200 % skrift (`font_scale 2.0`) på de samme skærme: ingen tekst overlapper eller forsvinder, og trykfelterne holder.
+- Den deployede server: `http://` sendes videre til `https://` (302) med gyldigt certifikat, både API og web.
+
+**Kendte begrænsninger**
+- Et meget langt rejsenavn afkortes stadig ved 200 % i headeren og på frimærket (to linjer); hele navnet står i rejsevælgeren og under Gruppen.
+- Opret indlæg (kamera), tablet-bredde, iOS og mørkt tema er ikke målt på en enhed. Kontrasten i mørkt tema er dækket af testen.
+- HSTS-headeren er ikke deployet endnu.
+- Byg på Windows kræver CMake 3.31.6 i SDK'en (`<sdk>/cmake/3.31.6`); AGP hentede den ikke selv.
+
+### 19. nov. 2026: dokumentation, README, testbrugere og secret-scan
+
+- **Projektdokumentation:** `docs/projektdokumentation.pdf` (4 sider) laves ud fra `docs/projektdokumentation.html`. Åbn HTML-filen i Edge eller Chrome, og gem som PDF (A4, uden sidehoved og -fod), når teksten er rettet. Den indeholder problem og brugergruppe, design, arkitektur, trusselsmodel (9 trusler med STRIDE og OWASP), sikkerhedsvalg, test og refleksion.
+- **Arkitekturdiagram:** `docs/arkitektur.svg` (kilde) og `docs/arkitektur.png` (til PDF og slides).
+- **README** er skrevet om på dansk: hvad appen gør, teknologier, roller, testbrugere, opsætning, deploy og sikkerhed.
+- **Testbrugere:** `npm run seed -w server` opretter Sara (ejer), Jonas (medrejsende) og Mor (kun visning) med en grupperejse og tre indlæg. Scriptet kan køres flere gange.
+- **Secret-scan:** gitleaks 8.30.1 på hele historikken (43 commits): ingen hemmeligheder. Test-hemmeligheden i `apps/server/test/helpers.ts` står i `.gitleaksignore`.
+- **Tablet** er afprøvet på emulatoren i portræt (750 dp: sidebar, én kolonne) og landskab (1280 dp: sidebar og liste-detalje): ingen trykfelter under 48 dp. Skærmbilleder af telefon (lyst, mørkt, 200 %) og tablet ligger i `docs/screenshots/`.
+
+**Mangler:** testbrugerne findes ikke på den deployede server, afsnittet om refleksion og AI skal gennemlæses og rettes til, og slides ligger i Google Slides.
