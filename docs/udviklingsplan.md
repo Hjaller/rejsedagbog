@@ -613,7 +613,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 
 ### 18. nov. 2026: deploy og bucket afklaret
 
-- **Serveren er deployet:** Coolify har deployet `ca6e244` (16. nov.), så API'et har `posts.update`-positionen, `enrich.searchPlaces` og video-uploaden. APK'en til brugertesten kan bygges.
+- **Serveren er deployet:** Coolify har deployet `cbea20a` (16. nov.), så API'et har `posts.update`-positionen, `enrich.searchPlaces` og video-uploaden. APK'en til brugertesten kan bygges.
 - **Én bucket til dev og prod** (afsnit 0.1): der oprettes ikke en separat prod-bucket. Konsekvensen er, at nøglen i udviklingsmiljøet også kan røre billederne i drift.
 
 **Mangler:** resten af listen fra 16. nov. (webvisning, APK og brugertest, testmatrix, README, kravspecifikation, præsentation).
