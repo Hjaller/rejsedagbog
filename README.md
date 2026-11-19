@@ -126,8 +126,8 @@ Appen bygges i skyen med [EAS Build](https://docs.expo.dev/build/introduction/),
 | Profil | Resultat | Server |
 |---|---|---|
 | `development` | Development build (kræver Metro på computeren). `development-simulator` er det samme til iOS-simulatoren. | `apps/native/.env` |
-| `preview` | Android: APK til direkte installation. iOS: ad hoc-build til registrerede enheder. | `https://api.example.com` |
-| `production` | Android: AAB til Google Play. iOS: build til TestFlight/App Store. Buildnummeret tælles selv op. | `https://api.example.com` |
+| `preview` | Android: APK til direkte installation. iOS: ad hoc-build til registrerede enheder. | `EXPO_PUBLIC_SERVER_URL` i `eas.json` |
+| `production` | Android: AAB til Google Play. iOS: build til TestFlight/App Store. Buildnummeret tælles selv op. | `EXPO_PUBLIC_SERVER_URL` i `eas.json` |
 
 **Første gang** (kræver en Expo-konto):
 
@@ -159,10 +159,10 @@ EAS opretter og gemmer selv signeringsnøglerne (Android keystore, iOS-certifika
 
 Serveren og web kører som Docker-images (`apps/server/Dockerfile`, `apps/web/Dockerfile`) på Coolify bag Traefik, som står for TLS og sender `http://` videre til `https://`.
 
-- API: `https://api.example.com`, web: `https://app.example.com`. Databasen er en Coolify-database, som ikke kan nås udefra.
+- API og web har hvert sit domæne med HTTPS. Databasen er en Coolify-database, som ikke kan nås udefra.
 - Migrationer køres ved hver opstart af API-containeren (`prisma migrate deploy`).
 - Miljøvariabler sættes i Coolify, aldrig i Git: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `CORS_ORIGIN`, `DATABASE_URL`, `S3_*` og `TRUST_PROXY`. Alle er beskrevet i `apps/server/.env.schema`.
-- `TRUST_PROXY` skal være proxyens IP eller CIDR (i Coolify `10.0.0.0/24`). Uden den ser serveren kun proxyens IP, og alle brugere deler samme rate limit.
+- `TRUST_PROXY` skal være proxyens IP eller CIDR (i Coolify det interne net, hvor Traefik sidder). Uden den ser serveren kun proxyens IP, og alle brugere deler samme rate limit.
 - Serveren skal deployes før en ny app-version, når API'et er ændret.
 
 Lokalt kan hele stakken startes med Docker Compose: `npm run docker:up` (stop med `npm run docker:down`).

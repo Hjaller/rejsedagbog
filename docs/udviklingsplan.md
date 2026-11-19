@@ -326,12 +326,12 @@ Ud over e-mail og adgangskode kan man logge ind med Apple og Google. Det går ge
 
 **Opsætning hos Google** (Google Cloud Console → APIs & Services → Credentials):
 1. Opret en OAuth-klient af typen *Web application* (også til appen, fordi login sker i browseren).
-2. Authorized redirect URI: `https://api.example.com/api/auth/callback/google`.
+2. Authorized redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/google`.
 3. Sæt `GOOGLE_CLIENT_ID` og `GOOGLE_CLIENT_SECRET` på serveren.
 
 **Opsætning hos Apple** (kræver Apple Developer Program; Certificates, Identifiers & Profiles):
 1. Slå *Sign in with Apple* til på App ID'et `dev.leth.rejsepost`.
-2. Opret et *Service ID*, fx `dev.leth.rejsepost.login`, med domænet `api.example.com` og Return URL `https://api.example.com/api/auth/callback/apple`. Det er `APPLE_CLIENT_ID`.
+2. Opret et *Service ID*, fx `dev.leth.rejsepost.login`, med API'ets domæne og Return URL `<BETTER_AUTH_URL>/api/auth/callback/apple`. Det er `APPLE_CLIENT_ID`.
 3. Opret en nøgle med *Sign in with Apple*, og hent `.p8`-filen (kan kun hentes én gang). Nøglens ID er `APPLE_KEY_ID`, og filens indhold er `APPLE_PRIVATE_KEY` (på én linje med `\n` som linjeskift).
 4. `APPLE_TEAM_ID` står under Membership.
 
@@ -486,9 +486,9 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 ### 12. nov. 2026: deploy og kortvisning (Should 5)
 
 **Deploy på Coolify**
-- API: https://api.example.com, web: https://app.example.com, Postgres som Coolify-database (ikke offentlig). Migrationer køres ved hver opstart af API-containeren.
+- API og web på hvert sit domæne med HTTPS, Postgres som Coolify-database (ikke offentlig). Migrationer køres ved hver opstart af API-containeren.
 - Rettet undervejs: Prisma-klienten er gitignoreret og skal genereres i Docker-buildet (`prisma generate`), og runner-images skal have `curl`, fordi Coolifys healthcheck kører curl/wget i containeren.
-- `TRUST_PROXY=10.0.0.0/24` (Coolifys interne net, hvor Traefik sidder). Serveren ser nu klientens rigtige IP, så IP-grænserne virker.
+- `TRUST_PROXY` er sat til Coolifys interne net, hvor Traefik sidder. Serveren ser nu klientens rigtige IP, så IP-grænserne virker.
 - Billeder bruger indtil videre dev-bucket'en; en prod-bucket er kun et env-skift.
 
 **Kortvisning (5)**
@@ -507,7 +507,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 
 **Kendte begrænsninger:** indlæg på samme sted ligger oven på hinanden (ingen klynger), og en rejse over datolinjen giver et forkert udsnit.
 
-**Næste skridt:** Should 4) Next.js-webvisning (inkl. kort med Leaflet), APK til brugertesten med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`.
+**Næste skridt:** Should 4) Next.js-webvisning (inkl. kort med Leaflet), APK til brugertesten med `EXPO_PUBLIC_SERVER_URL` sat til den deployede server.
 
 ### 16. nov. 2026: redesign, upload fra album og "Sæt sted"
 
@@ -593,7 +593,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 **Mangler (samlet pr. 16. nov.)**
 - ~~**Deploy:** serveren skal deployes, før en ny APK laves. Skift til en separat prod-bucket.~~ Lavet/afgjort, se 18. nov.
 - **Should 4) Next.js-webvisning:** `apps/web` har stadig kun scaffoldets login og dashboard. Den skal vise rejseoversigt, tidslinje og galleri som master/detail plus et kort med Leaflet og OSM, og den skal kun kunne læse.
-- **Brugertest:** byg en APK med `EXPO_PUBLIC_SERVER_URL=https://api.example.com`, test med mindst én medstuderende, og lav og dokumentér rettelserne.
+- **Brugertest:** byg en APK med `EXPO_PUBLIC_SERVER_URL` sat til den deployede server, test med mindst én medstuderende, og lav og dokumentér rettelserne.
 - **Testmatrix (afsnit 7):**
   - layouts på lille telefon, foldbar, tablet og web, i portræt og landskab.
   - en fysisk telefon og iOS.
@@ -621,7 +621,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 ### 18. nov. 2026: klar til build til iOS og Android (EAS)
 
 **Lavet**
-- **EAS Build:** `apps/native/eas.json` med profilerne `development`, `development-simulator`, `preview` (APK / ad hoc) og `production` (AAB / App Store). `preview` og `production` peger på `https://api.example.com`; adressen står i `eas.json`, fordi `.env` ikke kommer med op til EAS. Buildnumre styres af EAS (`appVersionSource: remote`, `autoIncrement`). Vejledning i README.
+- **EAS Build:** `apps/native/eas.json` med profilerne `development`, `development-simulator`, `preview` (APK / ad hoc) og `production` (AAB / App Store). `preview` og `production` peger på den deployede server; adressen står i `eas.json`, fordi `.env` ikke kommer med op til EAS. Buildnumre styres af EAS (`appVersionSource: remote`, `autoIncrement`). Vejledning i README.
 - **App-id:** `com.anonymous.rejsedagbog` er skiftet til `dev.leth.rejsepost` på begge platforme. Telefonen ser det som en ny app, så et gammelt dev-build skal afinstalleres, og dets lokale data følger ikke med.
 - **Ikon og splash:** Expos standardikon er erstattet af et frimærke med poststempel i appens farver (`scripts/generate-icons.mjs`). Splash-skærmen bruger papirfarven (mørk: `#161412`).
 - **iOS:** `ITSAppUsesNonExemptEncryption = false` (appen bruger kun HTTPS, så TestFlight ikke spørger om eksportregler ved hvert build). Tilladelsestekster for "altid"-position, bevægelse og Face ID er slået fra, fordi appen ikke bruger dem; teksten for præcis position er på dansk.
@@ -700,8 +700,8 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 
 - **Projektdokumentation:** `docs/projektdokumentation.pdf` (4 sider) laves ud fra `docs/projektdokumentation.html`. Åbn HTML-filen i Edge eller Chrome, og gem som PDF (A4, uden sidehoved og -fod), når teksten er rettet. Den indeholder problem og brugergruppe, design, arkitektur, trusselsmodel (9 trusler med STRIDE og OWASP), sikkerhedsvalg, test og refleksion.
 - **Arkitekturdiagram:** `docs/arkitektur.svg` (kilde) og `docs/arkitektur.png` (til PDF og slides).
-- **README** er skrevet om på dansk: hvad appen gør, teknologier, roller, testbrugere, opsætning, deploy og sikkerhed.
-- **Testbrugere:** et lokalt seed-script (`apps/server/scripts/seed.ts`, ignoreret af git og ikke en del af repoet) opretter 12 testbrugere og 5 rejser med 22 indlæg (ejere, medrejsende, kun visning, en rejse uden andre og en bruger uden rejser). Oversigten står i README. Scriptet kan køres flere gange.
+- **README** er skrevet om på dansk: hvad appen gør, teknologier, roller, opsætning, deploy og sikkerhed.
+- **Testbrugere:** et lokalt seed-script (`apps/server/scripts/seed.ts`, ignoreret af git og ikke en del af repoet) opretter 12 testbrugere og 5 rejser med 22 indlæg (ejere, medrejsende, kun visning, en rejse uden andre og en bruger uden rejser). Scriptet kan køres flere gange.
 - **Secret-scan:** gitleaks 8.30.1 på hele historikken (43 commits): ingen hemmeligheder. Test-hemmeligheden i `apps/server/test/helpers.ts` står i `.gitleaksignore`.
 - **Tablet** er afprøvet på emulatoren i portræt (750 dp: sidebar, én kolonne) og landskab (1280 dp: sidebar og liste-detalje): ingen trykfelter under 48 dp. Skærmbilleder af telefon (lyst, mørkt, 200 %) og tablet ligger i `docs/screenshots/`.
 
