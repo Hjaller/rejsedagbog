@@ -701,7 +701,7 @@ Besluttet at lave de tre første Should-features før deploy, så brugertesten k
 - **Projektdokumentation:** `docs/projektdokumentation.pdf` (4 sider) laves ud fra `docs/projektdokumentation.html`. Åbn HTML-filen i Edge eller Chrome, og gem som PDF (A4, uden sidehoved og -fod), når teksten er rettet. Den indeholder problem og brugergruppe, design, arkitektur, trusselsmodel (9 trusler med STRIDE og OWASP), sikkerhedsvalg, test og refleksion.
 - **Arkitekturdiagram:** `docs/arkitektur.svg` (kilde) og `docs/arkitektur.png` (til PDF og slides).
 - **README** er skrevet om på dansk: hvad appen gør, teknologier, roller, testbrugere, opsætning, deploy og sikkerhed.
-- **Testbrugere:** `npm run seed -w server` opretter Sara (ejer), Jonas (medrejsende) og Mor (kun visning) med en grupperejse og tre indlæg. Scriptet kan køres flere gange.
+- **Testbrugere:** et lokalt seed-script (`apps/server/scripts/seed.ts`, ignoreret af git og ikke en del af repoet) opretter 12 testbrugere og 5 rejser med 22 indlæg (ejere, medrejsende, kun visning, en rejse uden andre og en bruger uden rejser). Oversigten står i README. Scriptet kan køres flere gange.
 - **Secret-scan:** gitleaks 8.30.1 på hele historikken (43 commits): ingen hemmeligheder. Test-hemmeligheden i `apps/server/test/helpers.ts` står i `.gitleaksignore`.
 - **Tablet** er afprøvet på emulatoren i portræt (750 dp: sidebar, én kolonne) og landskab (1280 dp: sidebar og liste-detalje): ingen trykfelter under 48 dp. Skærmbilleder af telefon (lyst, mørkt, 200 %) og tablet ligger i `docs/screenshots/`.
 

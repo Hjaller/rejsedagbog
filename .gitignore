@@ -59,3 +59,6 @@ temp
 
 # Lokal billedlagring i udvikling (apps/server/.data/media)
 .data
+
+# Lokalt script til testbrugere (skal ikke i repoet)
+apps/server/scripts/seed.ts

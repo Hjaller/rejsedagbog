@@ -104,13 +104,7 @@ npx expo run:android      # development build: kræver Android Studio/SDK og en 
 
 Telefonen skal være på samme netværk som computeren, og firewallen skal tillade Node.js på port 3000 og 8081.
 
-**5. Opret testbrugerne** (serveren skal køre):
-
-```bash
-npm run seed -w server
-```
-
-**6. Kør tests** (kræver, at databasen kører):
+**5. Kør tests** (kræver, at databasen kører):
 
 ```bash
 npm run test
@@ -209,7 +203,6 @@ rejsedagbog/
 
 - `npm run dev`: start alle apps. `npm run dev:server`, `npm run dev:native` og `npm run dev:web` starter én ad gangen.
 - `npm run test`: servertests (kræver databasen). `npm run check-types`: typecheck af alle pakker.
-- `npm run seed -w server`: opret testbrugerne og testrejsen på den lokale server.
 - `npm run db:migrate`, `npm run db:generate`, `npm run db:studio`: Prisma.
 - `npm run env:generate`: generér `src/env.ts` efter ændringer i en `.env.schema`.
 - `npm run auth:generate`: generér Better Auths Prisma-skema efter ændringer i auth-konfigurationen.
